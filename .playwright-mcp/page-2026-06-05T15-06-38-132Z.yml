@@ -1,0 +1,4 @@
+- generic [ref=e4]:
+  - generic [ref=e5]: "TS2304: Cannot find name 'inject'."
+  - generic [ref=e6]: src/app/shared/ui/page-header/page-header.component.ts:212:39
+  - generic [ref=e7]: Click outside, press Esc key, or fix the code to dismiss.

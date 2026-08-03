@@ -1,0 +1,12 @@
+<svg width="128" height="128" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">My Grocery logo</title>
+  <desc id="desc">A grocery bag with produce and a check mark.</desc>
+  <rect width="128" height="128" rx="28" fill="#F6EFE6"/>
+  <path d="M44 47C44 35.9543 52.9543 27 64 27C75.0457 27 84 35.9543 84 47" stroke="#91653F" stroke-width="6" stroke-linecap="round"/>
+  <path d="M28 49C28 44.5817 31.5817 41 36 41H92C96.4183 41 100 44.5817 100 49V88C100 98.4934 91.4934 107 81 107H47C36.5066 107 28 98.4934 28 88V49Z" fill="#C96442"/>
+  <path d="M28 56H100V67H28V56Z" fill="#D97757"/>
+  <circle cx="53" cy="80" r="10" fill="#8CBF5A"/>
+  <ellipse cx="74" cy="84" rx="9" ry="8" fill="#F4D05C"/>
+  <path d="M73 54C73 49.5817 76.5817 46 81 46H95C96.6569 46 98 47.3431 98 49V58C98 65.1797 92.1797 71 85 71H81C76.5817 71 73 67.4183 73 63V54Z" fill="#F6EFE6"/>
+  <path d="M78 58L83 63L92 53" stroke="#5D8A31" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

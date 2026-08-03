@@ -1,0 +1,75 @@
+apply plugin: 'com.android.application'
+import java.util.Properties
+import java.io.FileInputStream
+
+def versionPropsFile = file("version.properties")
+def versionProps = new Properties()
+
+if (!versionPropsFile.exists()) {
+    throw new GradleException("version.properties not found at: ${versionPropsFile.absolutePath}")
+}
+
+versionProps.load(new FileInputStream(versionPropsFile))
+
+def fileVersionCode = versionProps.getProperty("VERSION_CODE", "1").toInteger()
+def versionMajor = versionProps.getProperty("VERSION_MAJOR", "1").toInteger()
+def versionMinor = versionProps.getProperty("VERSION_MINOR", "0").toInteger()
+def fileVersionPatch = versionProps.getProperty("VERSION_PATCH", "0").toInteger()
+
+// Manual versioning: values are read directly from version.properties.
+def resolvedVersionCode = fileVersionCode
+def resolvedVersionPatch = fileVersionPatch
+def resolvedVersionName = "${versionMajor}.${versionMinor}.${resolvedVersionPatch}"
+
+android {
+    namespace "com.ronali.groceryhub"
+    compileSdk rootProject.ext.compileSdkVersion
+    defaultConfig {
+        applicationId "com.ronali.groceryhub"
+        minSdkVersion rootProject.ext.minSdkVersion
+        targetSdkVersion rootProject.ext.targetSdkVersion
+        versionCode resolvedVersionCode
+        versionName resolvedVersionName
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        aaptOptions {
+             // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
+             // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
+            ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
+        }
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+        }
+    }
+}
+
+repositories {
+    flatDir{
+        dirs '../capacitor-cordova-android-plugins/src/main/libs', 'libs'
+    }
+}
+
+dependencies {
+    implementation fileTree(include: ['*.jar'], dir: 'libs')
+    implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
+    implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
+    implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
+    implementation project(':capacitor-android')
+    testImplementation "junit:junit:$junitVersion"
+    androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
+    androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
+    implementation project(':capacitor-cordova-android-plugins')
+}
+
+apply from: 'capacitor.build.gradle'
+
+try {
+    def servicesJSON = file('google-services.json')
+    if (servicesJSON.text) {
+        apply plugin: 'com.google.gms.google-services'
+    }
+} catch(Exception e) {
+    logger.info("google-services.json not found, google-services plugin not applied. Push Notifications won't work")
+}

@@ -1,0 +1,63 @@
+{
+  "name": "grocery-tracker",
+  "version": "0.0.0",
+  "private": true,
+  "packageManager": "npm@11.6.2",
+  "scripts": {
+    "ng": "ng",
+    "start": "ng serve",
+    "build": "ng build",
+    "watch": "ng build --watch --configuration development",
+    "test": "ng test",
+    "ionic:serve": "ionic serve",
+    "cap:sync": "npx cap sync",
+    "android:add": "npx cap add android",
+    "android:open": "npx cap open android",
+    "android:apk": "zsh ./scripts/build-android-apk.zsh",
+    "android:apk:release": "zsh ./scripts/build-android-apk.zsh release"
+  },
+  "prettier": {
+    "printWidth": 100,
+    "singleQuote": true,
+    "overrides": [
+      {
+        "files": "*.html",
+        "options": {
+          "parser": "angular"
+        }
+      }
+    ]
+  },
+  "dependencies": {
+    "@angular/animations": "^21.0.0",
+    "@angular/common": "^21.0.0",
+    "@angular/compiler": "^21.0.0",
+    "@angular/core": "^21.0.0",
+    "@angular/forms": "^21.0.0",
+    "@angular/platform-browser": "^21.0.0",
+    "@angular/platform-browser-dynamic": "^21.0.0",
+    "@angular/router": "^21.0.0",
+    "@capacitor/android": "^7.6.0",
+    "@capacitor/clipboard": "^7.0.4",
+    "@capacitor/core": "^7.6.0",
+    "@capacitor/filesystem": "^7.1.8",
+    "@capacitor/local-notifications": "^7.0.4",
+    "@capacitor/share": "^7.0.4",
+    "@ionic/angular": "^8.7.4",
+    "@ionic/storage-angular": "^4.0.0",
+    "ionicons": "^7.4.0",
+    "jspdf": "^4.2.1",
+    "localforage": "^1.10.0",
+    "rxjs": "~7.8.0",
+    "tslib": "^2.3.0"
+  },
+  "devDependencies": {
+    "@angular/build": "^21.0.5",
+    "@angular/cli": "^21.0.5",
+    "@angular/compiler-cli": "^21.0.0",
+    "@capacitor/cli": "^7.6.0",
+    "jsdom": "^27.1.0",
+    "typescript": "~5.9.2",
+    "vitest": "^4.0.8"
+  }
+}
