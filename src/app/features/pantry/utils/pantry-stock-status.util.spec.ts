@@ -7,47 +7,27 @@ import {
 } from './pantry-stock-status.util';
 
 describe('pantry-stock-status.util', () => {
-  it('treats gram-based items below 200g as low stock', () => {
-    expect(
-      isPantryItemBelowThreshold({
-        quantity: 199,
-        minQuantity: 50,
-        unit: 'g',
-        expiryDate: null
-      })
-    ).toBe(true);
-
-    expect(
-      isPantryItemBelowThreshold({
-        quantity: 200,
-        minQuantity: 50,
-        unit: 'g',
-        expiryDate: null
-      })
-    ).toBe(false);
-  });
-
-  it('treats liter-based items below 1l as low stock', () => {
-    expect(
-      isPantryItemBelowThreshold({
-        quantity: 0.9,
-        minQuantity: 0.25,
-        unit: 'l',
-        expiryDate: null
-      })
-    ).toBe(true);
-
+  it('treats quantity of 0 or 1 as low stock regardless of unit', () => {
     expect(
       isPantryItemBelowThreshold({
         quantity: 1,
+        minQuantity: 50,
+        unit: 'g',
+        expiryDate: null
+      })
+    ).toBe(true);
+
+    expect(
+      isPantryItemBelowThreshold({
+        quantity: 0,
         minQuantity: 0.25,
         unit: 'l',
         expiryDate: null
       })
-    ).toBe(false);
+    ).toBe(true);
   });
 
-  it('still honors higher custom thresholds', () => {
+  it('treats any quantity above 1 as in stock, ignoring custom thresholds', () => {
     expect(
       getPantryLowStockThreshold({
         minQuantity: 300,
@@ -62,10 +42,10 @@ describe('pantry-stock-status.util', () => {
         unit: 'g',
         expiryDate: new Date().toISOString().slice(0, 10)
       })
-    ).toBe('low-stock');
+    ).toBe('in-stock');
   });
 
-  it('uses the settings threshold as a higher global baseline', () => {
+  it('ignores the settings threshold once quantity is above 1', () => {
     expect(
       getPantryLowStockThreshold(
         {
@@ -86,6 +66,6 @@ describe('pantry-stock-status.util', () => {
         },
         5
       )
-    ).toBe(true);
+    ).toBe(false);
   });
 });

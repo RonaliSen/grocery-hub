@@ -1,4 +1,12 @@
-import { ChangeDetectionStrategy, Component, ElementRef, ViewChild, computed, inject, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  ElementRef,
+  ViewChild,
+  computed,
+  inject,
+  signal,
+} from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { IonContent, IonIcon } from '@ionic/angular/standalone';
 import { personCircleOutline } from 'ionicons/icons';
@@ -39,9 +47,19 @@ import { SettingsService } from '../services/settings.service';
                 class="profile-hero__avatar"
                 [class.profile-hero__avatar--image]="!!profilePhotoDataUrl()"
                 [style.background-image]="avatarBackgroundImage()"
-                aria-hidden="true"
+                [attr.role]="profilePhotoDataUrl() ? 'button' : null"
+                [attr.tabindex]="profilePhotoDataUrl() ? 0 : null"
+                [attr.aria-label]="profilePhotoDataUrl() ? 'View profile photo' : null"
+                (click)="openPhotoViewer()"
+                (keydown.enter)="openPhotoViewer()"
+                (keydown.space)="openPhotoViewer(); $event.preventDefault()"
               ></div>
-              <button type="button" class="profile-hero__edit" aria-label="Edit profile photo" (click)="openGalleryPicker()">
+              <button
+                type="button"
+                class="profile-hero__edit"
+                aria-label="Edit profile photo"
+                (click)="openGalleryPicker()"
+              >
                 <span aria-hidden="true" class="material-symbols-outlined">edit</span>
               </button>
               <input
@@ -56,7 +74,10 @@ import { SettingsService } from '../services/settings.service';
             <h2 class="profile-hero__name">{{ displayName() }}</h2>
           </section>
 
-          <section class="account-card account-card--personal" aria-labelledby="personal-info-heading">
+          <section
+            class="account-card account-card--personal"
+            aria-labelledby="personal-info-heading"
+          >
             <div class="account-card__header" id="personal-info-heading">
               <span aria-hidden="true" class="material-symbols-outlined">person</span>
               <h3>Personal Info</h3>
@@ -77,7 +98,9 @@ import { SettingsService } from '../services/settings.service';
               </div>
               <div class="account-info-row">
                 <span class="account-info-row__label">Household Size</span>
-                <span class="account-info-row__value">{{ settings().profile.householdSize ?? '' }}</span>
+                <span class="account-info-row__value">{{
+                  settings().profile.householdSize ?? ''
+                }}</span>
               </div>
             </div>
           </section>
@@ -123,14 +146,18 @@ import { SettingsService } from '../services/settings.service';
 
           <section class="account-card" aria-labelledby="budget-settings-heading">
             <div class="account-card__header" id="budget-settings-heading">
-              <span aria-hidden="true" class="material-symbols-outlined">account_balance_wallet</span>
+              <span aria-hidden="true" class="material-symbols-outlined"
+                >account_balance_wallet</span
+              >
               <h3>Budget</h3>
             </div>
 
             <a class="account-nav-row" [routerLink]="['/tabs/expenses/budget']">
               <div>
                 <span class="account-nav-row__title">Budget Settings</span>
-                <span class="account-nav-row__subtitle">Manage your weekly or monthly spending budget</span>
+                <span class="account-nav-row__subtitle"
+                  >Manage your weekly or monthly spending budget</span
+                >
               </div>
               <span aria-hidden="true" class="material-symbols-outlined">chevron_right</span>
             </a>
@@ -152,7 +179,6 @@ import { SettingsService } from '../services/settings.service';
               <span aria-hidden="true" class="material-symbols-outlined">chevron_right</span>
             </a>
           </section>
-
         </main>
       </div>
       @if (cropModalOpen()) {
@@ -161,26 +187,66 @@ import { SettingsService } from '../services/settings.service';
             <h3>Crop Profile Photo</h3>
             <div class="crop-preview" aria-label="Crop preview area">
               @if (cropImageSource()) {
-                <img [src]="cropImageSource()!" alt="Crop preview" [style.transform]="cropImageTransform()" />
+                <img
+                  [src]="cropImageSource()!"
+                  alt="Crop preview"
+                  [style.transform]="cropImageTransform()"
+                />
               }
             </div>
             <label class="crop-control">
               <span>Zoom</span>
-              <input type="range" min="1" max="3" step="0.01" [value]="cropZoom()" (input)="onCropZoomChange($event)" />
+              <input
+                type="range"
+                min="1"
+                max="3"
+                step="0.01"
+                [value]="cropZoom()"
+                (input)="onCropZoomChange($event)"
+              />
             </label>
             <label class="crop-control">
               <span>Horizontal</span>
-              <input type="range" min="-100" max="100" step="1" [value]="cropOffsetX()" (input)="onCropOffsetXChange($event)" />
+              <input
+                type="range"
+                min="-100"
+                max="100"
+                step="1"
+                [value]="cropOffsetX()"
+                (input)="onCropOffsetXChange($event)"
+              />
             </label>
             <label class="crop-control">
               <span>Vertical</span>
-              <input type="range" min="-100" max="100" step="1" [value]="cropOffsetY()" (input)="onCropOffsetYChange($event)" />
+              <input
+                type="range"
+                min="-100"
+                max="100"
+                step="1"
+                [value]="cropOffsetY()"
+                (input)="onCropOffsetYChange($event)"
+              />
             </label>
             <div class="crop-actions">
-              <button type="button" class="crop-btn crop-btn--ghost" (click)="cancelCrop()">Cancel</button>
-              <button type="button" class="crop-btn crop-btn--primary" (click)="confirmCrop()">Use Photo</button>
+              <button type="button" class="crop-btn crop-btn--ghost" (click)="cancelCrop()">
+                Cancel
+              </button>
+              <button type="button" class="crop-btn crop-btn--primary" (click)="confirmCrop()">
+                Use Photo
+              </button>
             </div>
           </div>
+        </div>
+      }
+
+      @if (photoViewerOpen()) {
+        <div class="photo-viewer-overlay" role="dialog" aria-label="Profile photo" (click)="closePhotoViewer()">
+          <button type="button" class="photo-viewer-close" aria-label="Close" (click)="closePhotoViewer()">
+            <span aria-hidden="true" class="material-symbols-outlined">close</span>
+          </button>
+          @if (profilePhotoDataUrl()) {
+            <img class="photo-viewer-img" [src]="profilePhotoDataUrl()!" alt="Profile photo" (click)="$event.stopPropagation()" />
+          }
         </div>
       }
     </ion-content>
@@ -292,6 +358,7 @@ import { SettingsService } from '../services/settings.service';
 
       .profile-hero__avatar--image {
         border-color: #ffffff;
+        cursor: pointer;
       }
 
       .profile-hero__edit {
@@ -338,7 +405,8 @@ import { SettingsService } from '../services/settings.service';
       }
 
       .crop-modal {
-        padding: calc(env(safe-area-inset-top, 0) + 1rem) 1rem calc(env(safe-area-inset-bottom, 0) + 1rem);
+        padding: calc(env(safe-area-inset-top, 0) + 1rem) 1rem
+          calc(env(safe-area-inset-bottom, 0) + 1rem);
         display: grid;
         gap: 0.9rem;
         background: #fff;
@@ -349,6 +417,37 @@ import { SettingsService } from '../services/settings.service';
       .crop-modal h3 {
         margin: 0;
         color: #08152b;
+      }
+
+      .photo-viewer-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 250;
+        display: grid;
+        place-items: center;
+        background: rgba(7, 22, 25, 0.86);
+      }
+
+      .photo-viewer-img {
+        width: min(90vw, 26rem);
+        aspect-ratio: 1;
+        border-radius: 50%;
+        object-fit: cover;
+        box-shadow: 0 18px 38px rgba(8, 21, 43, 0.4);
+      }
+
+      .photo-viewer-close {
+        position: absolute;
+        top: calc(env(safe-area-inset-top, 0) + 1rem);
+        right: 1rem;
+        width: 2.6rem;
+        height: 2.6rem;
+        border-radius: 50%;
+        border: none;
+        display: grid;
+        place-items: center;
+        background: rgba(255, 255, 255, 0.16);
+        color: #ffffff;
       }
 
       .crop-preview {
@@ -537,7 +636,6 @@ import { SettingsService } from '../services/settings.service';
         color: #5d697a;
         font-size: 0.84rem;
       }
-
     `,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -553,6 +651,7 @@ export class SettingsPage {
   protected readonly isSaving = signal(false);
   protected readonly isSavingPhoto = signal(false);
   protected readonly settings = this.settingsService.settings;
+  protected readonly photoViewerOpen = signal(false);
   protected readonly cropModalOpen = signal(false);
   protected readonly cropImageSource = signal<string | null>(null);
   protected readonly cropZoom = signal(1);
@@ -561,7 +660,9 @@ export class SettingsPage {
   protected readonly displayName = computed(
     () => this.settings().profile.fullName || 'Alex Johnson',
   );
-  protected readonly profilePhotoDataUrl = computed(() => this.settings().profile.photoDataUrl ?? null);
+  protected readonly profilePhotoDataUrl = computed(
+    () => this.settings().profile.photoDataUrl ?? null,
+  );
   protected readonly avatarBackgroundImage = computed(() =>
     this.profilePhotoDataUrl() ? `url("${this.profilePhotoDataUrl()}")` : null,
   );
@@ -584,7 +685,10 @@ export class SettingsPage {
     const nextValue = !this.settings().reminderSettings.expiryRemindersEnabled;
 
     await this.persistChanges({
-      appSettings: nextValue && !this.settings().notificationsEnabled ? { notificationsEnabled: true } : undefined,
+      appSettings:
+        nextValue && !this.settings().notificationsEnabled
+          ? { notificationsEnabled: true }
+          : undefined,
       reminderSettings: {
         expiryRemindersEnabled: nextValue,
       },
@@ -594,6 +698,18 @@ export class SettingsPage {
 
   protected openGalleryPicker(): void {
     this.avatarPicker?.nativeElement.click();
+  }
+
+  protected openPhotoViewer(): void {
+    if (!this.profilePhotoDataUrl()) {
+      return;
+    }
+
+    this.photoViewerOpen.set(true);
+  }
+
+  protected closePhotoViewer(): void {
+    this.photoViewerOpen.set(false);
   }
 
   protected onAvatarFileSelected(event: Event): void {

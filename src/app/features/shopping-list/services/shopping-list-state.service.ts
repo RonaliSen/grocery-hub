@@ -1,6 +1,7 @@
 import { computed, inject, Injectable, signal } from '@angular/core';
 
 import { createId } from '../../../core/utils/id.utils';
+import { isExpired } from '../../../core/utils/date.utils';
 import { PantryItem } from '../../pantry/models/pantry-item.model';
 import { PantryStateService } from '../../pantry/services/pantry-state.service';
 import {
@@ -83,6 +84,10 @@ export class ShoppingListStateService {
     await this.addLowStockItems([item]);
   }
 
+  async clearAutoAddDismissal(pantryItemId: string): Promise<void> {
+    await this.clearDismissedAutoAddPantryItemIds([pantryItemId]);
+  }
+
   getActiveLinkedPantryItem(pantryItemId: string): ShoppingListItem | undefined {
     return this.itemsState().find(
       (item) => item.linkedPantryItemId === pantryItemId && !item.completed
@@ -111,7 +116,8 @@ export class ShoppingListStateService {
     const autoAddCandidates = items.filter(
       (item) =>
         item.autoAddToShoppingList &&
-        isPantryItemBelowThreshold(item, this.settingsService.settings().defaultLowStockThreshold)
+        (isPantryItemBelowThreshold(item, this.settingsService.settings().defaultLowStockThreshold) ||
+          (item.expiryDate !== null && isExpired(item.expiryDate)))
     );
 
     if (autoAddCandidates.length === 0) {

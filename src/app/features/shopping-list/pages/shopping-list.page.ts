@@ -23,8 +23,10 @@ import {
 
 import { CATEGORY_FILTER_OPTIONS, CATEGORY_LABELS } from '../../../core/constants/app-config';
 import { formatCurrencyAmount, getCurrencySymbol } from '../../../core/utils/currency.utils';
+import { isExpired } from '../../../core/utils/date.utils';
 import { PantryCategory } from '../../pantry/models/pantry-item.model';
 import { PantryStateService } from '../../pantry/services/pantry-state.service';
+import { isPantryItemBelowThreshold } from '../../pantry/utils/pantry-stock-status.util';
 import { ExpenseService } from '../../expenses/services/expense.service';
 import { ShoppingListItem } from '../models/shopping-list-item.model';
 import { ShoppingItemRowComponent } from '../components/shopping-item-row.component';
@@ -39,6 +41,7 @@ type CheckoutLine = {
   imageUrl: string | null;
   unitPriceInput: string;
   isCustom: boolean;
+  linkedPantryItemId: string | null;
 };
 
 type ShareMethod = 'whatsapp' | 'clipboard' | 'pdf';
@@ -990,6 +993,19 @@ export class ShoppingListPage {
     return this.activeStore() === 'german' ? item.germanStore : item.indianStore;
   }
 
+  private isVisibleInCart(item: ShoppingListItem): boolean {
+    if (!item.linkedPantryItemId) {
+      return true;
+    }
+
+    const pantryItem = this.pantryState.getById(item.linkedPantryItemId);
+    if (!pantryItem) {
+      return true;
+    }
+
+    return isPantryItemBelowThreshold(pantryItem) || (pantryItem.expiryDate !== null && isExpired(pantryItem.expiryDate));
+  }
+
   private resolveCategory(item: ShoppingListItem): PantryCategory {
     if (item.linkedPantryItemId) {
       const pantryItem = this.pantryState.getById(item.linkedPantryItemId);
@@ -1011,7 +1027,7 @@ export class ShoppingListPage {
     if (filter !== 'all') {
       items = items.filter((i) => this.resolveCategory(i) === filter);
     }
-    return items.filter((item) => this.matchesActiveStore(item));
+    return items.filter((item) => this.matchesActiveStore(item) && this.isVisibleInCart(item));
   });
 
   protected readonly filteredCompletedItems = computed(() => {
@@ -1094,7 +1110,8 @@ export class ShoppingListPage {
             category: this.resolveCategory(item),
             imageUrl: pantryItem?.imageUrl ?? null,
             unitPriceInput: '',
-            isCustom: false
+            isCustom: false,
+            linkedPantryItemId: item.linkedPantryItemId ?? null
           };
         })
       }
@@ -1244,7 +1261,8 @@ export class ShoppingListPage {
         category: 'other',
         imageUrl: null,
         unitPriceInput: '',
-        isCustom: true
+        isCustom: true,
+        linkedPantryItemId: null
       }
     ]);
   }

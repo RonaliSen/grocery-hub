@@ -36,6 +36,7 @@ import { EmptyStateCardComponent } from '../../../shared/components/empty-state-
 import { SettingsService } from '../../settings/services/settings.service';
 import { PantryCategory, QuantityUnit } from '../models/pantry-item.model';
 import { PantryDuplicateItemNameError, PantryStateService } from '../services/pantry-state.service';
+import { ShoppingListStateService } from '../../shopping-list/services/shopping-list-state.service';
 
 @Component({
   selector: 'app-pantry-form-page',
@@ -626,6 +627,7 @@ export class PantryFormPage {
   private readonly formBuilder = inject(FormBuilder);
   private readonly route = inject(ActivatedRoute);
   private readonly pantryState = inject(PantryStateService);
+  private readonly shoppingState = inject(ShoppingListStateService);
   private readonly settingsService = inject(SettingsService);
   private readonly navigationHistory = inject(NavigationHistoryService);
 
@@ -845,6 +847,11 @@ export class PantryFormPage {
 
       const resolvedCategory =
         rawValue.category === 'other' && mappedCategory ? mappedCategory : rawValue.category;
+
+      if (this.itemId()) {
+        await this.shoppingState.clearAutoAddDismissal(this.itemId() as string);
+      }
+
       await this.pantryState.save(
         {
           name: rawValue.name.trim(),

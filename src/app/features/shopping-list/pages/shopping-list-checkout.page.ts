@@ -21,7 +21,10 @@ type CheckoutLine = {
   imageUrl: string | null;
   unitPriceInput: string;
   isCustom: boolean;
+  linkedPantryItemId: string | null;
 };
+
+const RESTOCK_QUANTITY = 2;
 
 @Component({
   selector: 'app-shopping-list-checkout-page',
@@ -575,7 +578,8 @@ export class ShoppingListCheckoutPage {
         category: 'other',
         imageUrl: null,
         unitPriceInput: '',
-        isCustom: true
+        isCustom: true,
+        linkedPantryItemId: null
       }
     ]);
   }
@@ -627,6 +631,7 @@ export class ShoppingListCheckoutPage {
       items: lines
     });
 
+    await this.restockLinkedPantryItems();
     await this.clearVisibleActiveItems();
     const toast = await this.toastController.create({
       message: 'Purchase added to expenses',
@@ -635,6 +640,7 @@ export class ShoppingListCheckoutPage {
       color: 'success'
     });
     await toast.present();
+    await this.router.navigateByUrl('/tabs/shopping-list', { replaceUrl: true });
     await this.router.navigateByUrl('/tabs/expenses');
   }
 
@@ -650,7 +656,8 @@ export class ShoppingListCheckoutPage {
           category: this.resolveCategory(item),
           imageUrl: pantryItem?.imageUrl ?? null,
           unitPriceInput: '',
-          isCustom: false
+          isCustom: false,
+          linkedPantryItemId: item.linkedPantryItemId ?? null
         };
       });
   }
@@ -675,6 +682,20 @@ export class ShoppingListCheckoutPage {
     }
 
     return 'other';
+  }
+
+  private async restockLinkedPantryItems(): Promise<void> {
+    const pantryItemIds = [
+      ...new Set(
+        this.checkoutLines()
+          .filter((line) => !line.isCustom && line.linkedPantryItemId)
+          .map((line) => line.linkedPantryItemId as string)
+      )
+    ];
+
+    for (const pantryItemId of pantryItemIds) {
+      await this.pantryState.setQuantity(pantryItemId, RESTOCK_QUANTITY);
+    }
   }
 
   private async clearVisibleActiveItems(): Promise<void> {

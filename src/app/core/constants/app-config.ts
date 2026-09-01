@@ -12,7 +12,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   emailAlertsEnabled: false,
   themePreference: 'system',
   defaultCategory: 'vegetables',
-  defaultLowStockThreshold: 2,
+  defaultLowStockThreshold: 1,
   defaultAutoAddToShoppingList: true,
   profile: DEFAULT_USER_PROFILE,
   reminderSettings: {

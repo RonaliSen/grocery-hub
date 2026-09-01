@@ -34,7 +34,12 @@ import { NavigationHistoryService } from '../../../core/services/navigation-hist
                   class="profile-hero__avatar"
                   [class.profile-hero__avatar--image]="!!photoDataUrl()"
                   [style.background-image]="avatarBackgroundImage()"
-                  aria-hidden="true"
+                  [attr.role]="photoDataUrl() ? 'button' : null"
+                  [attr.tabindex]="photoDataUrl() ? 0 : null"
+                  [attr.aria-label]="photoDataUrl() ? 'View profile photo' : null"
+                  (click)="openPhotoViewer()"
+                  (keydown.enter)="openPhotoViewer()"
+                  (keydown.space)="openPhotoViewer(); $event.preventDefault()"
                 ></div>
                 <button type="button" class="profile-hero__edit" aria-label="Edit profile photo" (click)="openGalleryPicker()">
                   <span aria-hidden="true" class="material-symbols-outlined">edit</span>
@@ -173,6 +178,17 @@ import { NavigationHistoryService } from '../../../core/services/navigation-hist
           </div>
         </div>
       }
+
+      @if (photoViewerOpen()) {
+        <div class="photo-viewer-overlay" role="dialog" aria-label="Profile photo" (click)="closePhotoViewer()">
+          <button type="button" class="photo-viewer-close" aria-label="Close" (click)="closePhotoViewer()">
+            <span aria-hidden="true" class="material-symbols-outlined">close</span>
+          </button>
+          @if (photoDataUrl()) {
+            <img class="photo-viewer-img" [src]="photoDataUrl()!" alt="Profile photo" (click)="$event.stopPropagation()" />
+          }
+        </div>
+      }
     </ion-content>
   `,
   styles: [
@@ -267,6 +283,7 @@ import { NavigationHistoryService } from '../../../core/services/navigation-hist
 
       .profile-hero__avatar--image {
         border-color: #ffffff;
+        cursor: pointer;
       }
 
       .profile-hero__edit {
@@ -324,6 +341,37 @@ import { NavigationHistoryService } from '../../../core/services/navigation-hist
       .crop-modal h3 {
         margin: 0;
         color: #08152b;
+      }
+
+      .photo-viewer-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 250;
+        display: grid;
+        place-items: center;
+        background: rgba(7, 22, 25, 0.86);
+      }
+
+      .photo-viewer-img {
+        width: min(90vw, 26rem);
+        aspect-ratio: 1;
+        border-radius: 50%;
+        object-fit: cover;
+        box-shadow: 0 18px 38px rgba(8, 21, 43, 0.4);
+      }
+
+      .photo-viewer-close {
+        position: absolute;
+        top: calc(env(safe-area-inset-top, 0) + 1rem);
+        right: 1rem;
+        width: 2.6rem;
+        height: 2.6rem;
+        border-radius: 50%;
+        border: none;
+        display: grid;
+        place-items: center;
+        background: rgba(255, 255, 255, 0.16);
+        color: #ffffff;
       }
 
       .crop-preview {
@@ -509,6 +557,7 @@ export class ProfileDetailsPage {
   protected readonly isSaving = signal(false);
   protected readonly submitted = signal(false);
   protected readonly photoDataUrl = signal<string | null>(this.profile.photoDataUrl ?? null);
+  protected readonly photoViewerOpen = signal(false);
   protected readonly cropModalOpen = signal(false);
   protected readonly cropImageSource = signal<string | null>(null);
   protected readonly cropZoom = signal(1);
@@ -572,6 +621,18 @@ export class ProfileDetailsPage {
 
   protected openGalleryPicker(): void {
     this.avatarPicker?.nativeElement.click();
+  }
+
+  protected openPhotoViewer(): void {
+    if (!this.photoDataUrl()) {
+      return;
+    }
+
+    this.photoViewerOpen.set(true);
+  }
+
+  protected closePhotoViewer(): void {
+    this.photoViewerOpen.set(false);
   }
 
   protected onAvatarFileSelected(event: Event): void {
