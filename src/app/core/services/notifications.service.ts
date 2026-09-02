@@ -5,12 +5,23 @@ import { LocalNotificationSchema, LocalNotifications } from '@capacitor/local-no
 import { STORAGE_KEYS } from '../constants/storage-keys';
 import { StorageService } from './storage.service';
 
+interface StoredNotificationEntry {
+  readonly id: number;
+  readonly title: string | null;
+  readonly body: string | null;
+  readonly at: string | null;
+  readonly channelId: string;
+}
+
+const REMINDER_CHANNEL_ID = 'reminders_v2';
+
 @Injectable({
   providedIn: 'root'
 })
 export class NotificationsService {
   private readonly storage = inject(StorageService);
   private readonly browserTimeouts = new Map<number, ReturnType<typeof setTimeout>>();
+  private channelReady = false;
 
   isSupported(): boolean {
     return this.isNativeSupported() || this.isBrowserSupported();
@@ -55,35 +66,89 @@ export class NotificationsService {
   }
 
   async replaceScheduledReminders(notifications: readonly LocalNotificationSchema[]): Promise<void> {
-    const previousIds = await this.storage.get<readonly number[]>(STORAGE_KEYS.reminderNotificationIds, []);
+    const previousEntries = await this.storage.get<readonly StoredNotificationEntry[]>(
+      STORAGE_KEYS.reminderNotificationIds,
+      []
+    );
+    const previousById = new Map(previousEntries.map((entry) => [entry.id, entry]));
+    const nextEntries = notifications.map((notification) => this.toStoredEntry(notification));
 
-    if (this.isNativeSupported() && previousIds.length > 0) {
-      await LocalNotifications.cancel({
-        notifications: previousIds.map((id) => ({ id }))
-      });
-    }
+    const idsToCancel = previousEntries
+      .filter((previous) => {
+        const next = nextEntries.find((entry) => entry.id === previous.id);
+        return !next || !this.entriesMatch(previous, next);
+      })
+      .map((entry) => entry.id);
 
-    this.clearBrowserTimeouts(previousIds);
+    const notificationsToSchedule = notifications
+      .filter((notification) => {
+        const previous = previousById.get(notification.id);
+        return !previous || !this.entriesMatch(previous, this.toStoredEntry(notification));
+      })
+      .map((notification) => ({ ...notification, channelId: REMINDER_CHANNEL_ID }));
+
+    this.clearBrowserTimeouts(idsToCancel);
 
     if (!this.isSupported()) {
       await this.storage.set(STORAGE_KEYS.reminderNotificationIds, []);
       return;
     }
 
-    if (this.isNativeSupported() && notifications.length > 0) {
+    if (this.isNativeSupported() && idsToCancel.length > 0) {
+      await LocalNotifications.cancel({
+        notifications: idsToCancel.map((id) => ({ id }))
+      });
+    }
+
+    if (this.isNativeSupported() && notificationsToSchedule.length > 0) {
+      await this.ensureChannel();
       await LocalNotifications.schedule({
-        notifications: [...notifications]
+        notifications: [...notificationsToSchedule]
       });
     }
 
     if (this.isBrowserSupported()) {
-      this.scheduleBrowserNotifications(notifications);
+      this.scheduleBrowserNotifications(notificationsToSchedule);
     }
 
-    await this.storage.set(
-      STORAGE_KEYS.reminderNotificationIds,
-      notifications.map((notification) => notification.id)
+    await this.storage.set(STORAGE_KEYS.reminderNotificationIds, nextEntries);
+  }
+
+  private toStoredEntry(notification: LocalNotificationSchema): StoredNotificationEntry {
+    const scheduledAt = notification.schedule?.at;
+    const isValidDate = scheduledAt instanceof Date && !Number.isNaN(scheduledAt.getTime());
+    return {
+      id: notification.id,
+      title: notification.title ?? null,
+      body: notification.body ?? null,
+      at: isValidDate ? scheduledAt.toISOString() : null,
+      channelId: REMINDER_CHANNEL_ID
+    };
+  }
+
+  private entriesMatch(left: StoredNotificationEntry, right: StoredNotificationEntry): boolean {
+    return (
+      left.title === right.title &&
+      left.body === right.body &&
+      left.at === right.at &&
+      left.channelId === right.channelId
     );
+  }
+
+  private async ensureChannel(): Promise<void> {
+    if (this.channelReady) {
+      return;
+    }
+
+    await LocalNotifications.createChannel({
+      id: REMINDER_CHANNEL_ID,
+      name: 'Reminders',
+      description: 'Low stock, expiry, budget and cart reminders',
+      importance: 5,
+      visibility: 1,
+      vibration: true
+    });
+    this.channelReady = true;
   }
 
   private isNativeSupported(): boolean {

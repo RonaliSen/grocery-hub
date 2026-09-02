@@ -21,6 +21,9 @@ describe('ExpenseService', () => {
   };
 
   beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-06-15T12:00:00.000Z'));
+
     storage.get.mockReset();
     storage.set.mockReset();
 
@@ -36,6 +39,7 @@ describe('ExpenseService', () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     TestBed.resetTestingModule();
   });
 

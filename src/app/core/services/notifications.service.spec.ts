@@ -17,7 +17,8 @@ vi.mock('@capacitor/local-notifications', () => ({
     checkPermissions: vi.fn(),
     requestPermissions: vi.fn(),
     cancel: vi.fn(),
-    schedule: vi.fn()
+    schedule: vi.fn(),
+    createChannel: vi.fn()
   }
 }));
 
@@ -58,6 +59,7 @@ describe('NotificationsService', () => {
     vi.mocked(LocalNotifications.requestPermissions).mockReset();
     vi.mocked(LocalNotifications.cancel).mockReset();
     vi.mocked(LocalNotifications.schedule).mockReset();
+    vi.mocked(LocalNotifications.createChannel).mockReset();
     browserNotifications.mockReset();
     requestPermission.mockReset();
     storage.get.mockReset();
@@ -69,6 +71,7 @@ describe('NotificationsService', () => {
     vi.mocked(LocalNotifications.requestPermissions).mockResolvedValue({ display: 'granted' });
     vi.mocked(LocalNotifications.cancel).mockResolvedValue(undefined as never);
     vi.mocked(LocalNotifications.schedule).mockResolvedValue(undefined as never);
+    vi.mocked(LocalNotifications.createChannel).mockResolvedValue(undefined as never);
     MockNotification.permission = 'default';
     requestPermission.mockResolvedValue('granted');
 
@@ -88,8 +91,11 @@ describe('NotificationsService', () => {
     TestBed.resetTestingModule();
   });
 
-  it('cancels only previously owned reminder ids and stores the replacement ids', async () => {
-    storage.get.mockResolvedValue([11, 22]);
+  it('cancels only previously owned reminder ids and stores the replacement entries', async () => {
+    storage.get.mockResolvedValue([
+      { id: 11, title: 'Old', body: 'Old body', at: '2026-03-15T09:00:00.000Z' },
+      { id: 22, title: 'Also old', body: 'Also old body', at: '2026-03-15T09:00:00.000Z' }
+    ]);
 
     const service = TestBed.inject(NotificationsService);
     await service.replaceScheduledReminders([
@@ -107,6 +113,14 @@ describe('NotificationsService', () => {
     expect(LocalNotifications.cancel).toHaveBeenCalledWith({
       notifications: [{ id: 11 }, { id: 22 }]
     });
+    expect(LocalNotifications.createChannel).toHaveBeenCalledWith({
+      id: 'reminders_v2',
+      name: 'Reminders',
+      description: 'Low stock, expiry, budget and cart reminders',
+      importance: 5,
+      visibility: 1,
+      vibration: true
+    });
     expect(LocalNotifications.schedule).toHaveBeenCalledWith({
       notifications: [
         {
@@ -115,11 +129,57 @@ describe('NotificationsService', () => {
           body: 'Use it',
           schedule: {
             at: new Date('2026-03-16T09:00:00')
-          }
+          },
+          channelId: 'reminders_v2'
         }
       ]
     });
-    expect(storage.set).toHaveBeenCalledWith(STORAGE_KEYS.reminderNotificationIds, [33]);
+    expect(storage.set).toHaveBeenCalledWith(STORAGE_KEYS.reminderNotificationIds, [
+      {
+        id: 33,
+        title: 'Milk expires soon',
+        body: 'Use it',
+        at: new Date('2026-03-16T09:00:00').toISOString(),
+        channelId: 'reminders_v2'
+      }
+    ]);
+  });
+
+  it('leaves an unchanged pending reminder untouched instead of cancelling and rescheduling it', async () => {
+    storage.get.mockResolvedValue([
+      {
+        id: 33,
+        title: 'Milk expires soon',
+        body: 'Use it',
+        at: new Date('2026-03-16T09:00:00').toISOString(),
+        channelId: 'reminders_v2'
+      }
+    ]);
+
+    const service = TestBed.inject(NotificationsService);
+    await service.replaceScheduledReminders([
+      {
+        id: 33,
+        title: 'Milk expires soon',
+        body: 'Use it',
+        schedule: {
+          at: new Date('2026-03-16T09:00:00')
+        }
+      }
+    ]);
+
+    expect(LocalNotifications.cancel).not.toHaveBeenCalled();
+    expect(LocalNotifications.schedule).not.toHaveBeenCalled();
+    expect(LocalNotifications.createChannel).not.toHaveBeenCalled();
+    expect(storage.set).toHaveBeenCalledWith(STORAGE_KEYS.reminderNotificationIds, [
+      {
+        id: 33,
+        title: 'Milk expires soon',
+        body: 'Use it',
+        at: new Date('2026-03-16T09:00:00').toISOString(),
+        channelId: 'reminders_v2'
+      }
+    ]);
   });
 
   it('uses browser notifications when local notifications are unsupported', async () => {
@@ -142,7 +202,15 @@ describe('NotificationsService', () => {
 
     expect(LocalNotifications.cancel).not.toHaveBeenCalled();
     expect(LocalNotifications.schedule).not.toHaveBeenCalled();
-    expect(storage.set).toHaveBeenCalledWith(STORAGE_KEYS.reminderNotificationIds, [44]);
+    expect(storage.set).toHaveBeenCalledWith(STORAGE_KEYS.reminderNotificationIds, [
+      {
+        id: 44,
+        title: 'Digest',
+        body: 'Apples',
+        at: new Date('2026-03-16T09:00:00').toISOString(),
+        channelId: 'reminders_v2'
+      }
+    ]);
 
     await vi.advanceTimersByTimeAsync(1000);
     expect(browserNotifications).toHaveBeenCalledWith('Digest', {

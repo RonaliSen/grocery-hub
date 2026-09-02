@@ -257,11 +257,7 @@ export class ReminderService {
       return;
     }
 
-    const consumed = await this.pantryConsumption.consume(reminder.relatedItemId, 1);
-    if (!consumed) {
-      return;
-    }
-
+    await this.pantryConsumption.consume(reminder.relatedItemId, 1);
     await this.completeReminder(reminder, 'MARK_CONSUMED');
     await this.sync();
   }

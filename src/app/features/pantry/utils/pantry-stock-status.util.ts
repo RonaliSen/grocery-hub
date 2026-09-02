@@ -29,10 +29,6 @@ export function isPantryItemBelowThreshold(
   item: Pick<PantryItem, 'quantity' | 'minQuantity' | 'unit' | 'expiryDate'>,
   defaultThreshold = item.minQuantity
 ): boolean {
-  if (item.quantity > 1) {
-    return false;
-  }
-
   const baselineThreshold = Math.max(item.minQuantity, defaultThreshold);
   if (item.quantity <= baselineThreshold) {
     return true;

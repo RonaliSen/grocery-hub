@@ -163,7 +163,7 @@ describe('TabsShellPage', () => {
       'Pantry',
       'Cart',
       'Expenses',
-      'Settings'
+      'Account'
     ]);
   });
 

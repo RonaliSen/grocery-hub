@@ -1,6 +1,7 @@
 import '@angular/compiler';
 import { vi } from 'vitest';
 import { Location } from '@angular/common';
+import { provideLocationMocks, SpyLocation } from '@angular/common/testing';
 import { Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import {
@@ -40,23 +41,16 @@ const TEST_ROUTES: Routes = [
 ];
 
 describe('NavigationHistoryService', () => {
-  const location = {
-    back: vi.fn()
-  };
+  let locationBackSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(async () => {
-    location.back.mockReset();
-
     await TestBed.configureTestingModule({
-      providers: [
-        provideRouter(TEST_ROUTES),
-        NavigationHistoryService,
-        {
-          provide: Location,
-          useValue: location
-        }
-      ]
+      providers: [provideRouter(TEST_ROUTES), provideLocationMocks(), NavigationHistoryService]
     }).compileComponents();
+
+    locationBackSpy = vi
+      .spyOn(TestBed.inject(Location) as SpyLocation, 'back')
+      .mockImplementation(() => {});
   });
 
   it('tracks pushed routes in visit order', async () => {
@@ -91,6 +85,6 @@ describe('NavigationHistoryService', () => {
 
     await service.back('/tabs/home');
 
-    expect(location.back).toHaveBeenCalledOnce();
+    expect(locationBackSpy).toHaveBeenCalledOnce();
   });
 });

@@ -29,6 +29,8 @@ export class AppInitService {
     | null = null;
   private runtimeSyncInFlight = false;
   private skipNextReactiveSync = false;
+  private lastSyncedItems: readonly PantryItem[] | null = null;
+  private lastSyncedSettings: AppSettings | null = null;
 
   constructor() {
     effect(() => {
@@ -45,9 +47,17 @@ export class AppInitService {
 
       if (this.skipNextReactiveSync) {
         this.skipNextReactiveSync = false;
+        this.lastSyncedItems = items;
+        this.lastSyncedSettings = settings;
         return;
       }
 
+      if (items === this.lastSyncedItems && settings === this.lastSyncedSettings) {
+        return;
+      }
+
+      this.lastSyncedItems = items;
+      this.lastSyncedSettings = settings;
       this.queueRuntimeSync(items, settings);
     });
   }

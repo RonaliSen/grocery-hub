@@ -401,6 +401,50 @@ type ReminderActionKey =
         </div>
       </ng-template>
     </ion-modal>
+
+    <ion-modal [isOpen]="restockModalOpen()" [initialBreakpoint]="0.64" [breakpoints]="[0, 0.64]" (didDismiss)="closeRestockSheet()">
+      <ng-template>
+        <div class="custom-modal restock-modal">
+          <div class="sheet-handle"></div>
+          <div class="custom-modal__body" style="flex-grow: 0">
+            <header class="custom-modal__header">
+              <h2>Mark Restocked</h2>
+              <p>How many {{ restockItemName() }} do you have now?</p>
+            </header>
+
+            <label class="field">
+              <span>New Quantity</span>
+              <input
+                type="number"
+                inputmode="numeric"
+                min="1"
+                step="1"
+                [value]="restockQuantityInput()"
+                (input)="updateRestockQuantity($event)"
+              />
+            </label>
+
+            <label class="field">
+              <span>Expiry Date (optional)</span>
+              <input
+                type="date"
+                [value]="restockExpiryDateInput()"
+                (input)="updateRestockExpiryDate($event)"
+              />
+            </label>
+          </div>
+
+          <footer class="custom-modal__footer">
+            <div class="modal-actions">
+              <button type="button" class="ghost-btn" (click)="closeRestockSheet()">Cancel</button>
+              <button type="button" class="save-btn" [disabled]="!canConfirmRestock()" (click)="confirmRestock()">
+                Save
+              </button>
+            </div>
+          </footer>
+        </div>
+      </ng-template>
+    </ion-modal>
   `,
   styles: [
     `
@@ -993,6 +1037,7 @@ type ReminderActionKey =
         flex: 1 1 auto;
         min-height: 0;
         display: grid;
+        align-content: start;
         gap: 0.75rem;
         overflow: auto;
       }
@@ -1186,6 +1231,11 @@ export class RemindersPage {
   protected readonly selectedSnoozePreset = signal<SnoozePreset>('later-today');
   protected readonly customSnoozeDate = signal(this.getTodayDate());
   protected readonly customSnoozeTime = signal('18:00');
+  protected readonly restockModalOpen = signal(false);
+  protected readonly restockReminderId = signal<string | null>(null);
+  protected readonly restockItemName = signal('');
+  protected readonly restockQuantityInput = signal('');
+  protected readonly restockExpiryDateInput = signal('');
 
   protected readonly categoryTabs = [
     { label: 'All', value: 'all' },
@@ -1519,8 +1569,7 @@ export class RemindersPage {
     }
 
     if (action === 'mark-restocked') {
-      await this.reminderService.markRestocked(reminder.id);
-      await this.reminderService.sync();
+      this.openRestockSheet(reminder);
       return;
     }
 
@@ -1613,6 +1662,62 @@ export class RemindersPage {
     this.suppressNextPopstateClose = true;
     this.modalHistoryActive = false;
     window.history.back();
+  }
+
+  protected openRestockSheet(reminder: ReminderItem): void {
+    const pantryItem = reminder.relatedItemId ? this.pantryState.getById(reminder.relatedItemId) : undefined;
+    this.restockReminderId.set(reminder.id);
+    this.restockItemName.set(reminder.title);
+    this.restockQuantityInput.set(String(pantryItem ? pantryItem.minQuantity + 1 : 1));
+    this.restockExpiryDateInput.set(pantryItem?.expiryDate ?? '');
+    this.restockModalOpen.set(true);
+  }
+
+  protected closeRestockSheet(): void {
+    this.restockModalOpen.set(false);
+    this.restockReminderId.set(null);
+    this.restockItemName.set('');
+    this.restockQuantityInput.set('');
+    this.restockExpiryDateInput.set('');
+  }
+
+  protected updateRestockQuantity(event: Event): void {
+    const value = (event.target as HTMLInputElement).value;
+    this.restockQuantityInput.set(value);
+  }
+
+  protected updateRestockExpiryDate(event: Event): void {
+    const value = (event.target as HTMLInputElement).value;
+    this.restockExpiryDateInput.set(value);
+  }
+
+  protected canConfirmRestock(): boolean {
+    const quantity = Number(this.restockQuantityInput());
+    return Number.isFinite(quantity) && quantity > 0;
+  }
+
+  protected async confirmRestock(): Promise<void> {
+    const reminderId = this.restockReminderId();
+    if (!reminderId || !this.canConfirmRestock()) {
+      return;
+    }
+
+    const reminder = this.reminderService
+      .getVisibleReminders('all')
+      .find((current) => current.id === reminderId);
+    const quantity = Number(this.restockQuantityInput());
+    const expiryDate = this.restockExpiryDateInput() || null;
+
+    if (reminder?.relatedItemId) {
+      const pantryItem = this.pantryState.getById(reminder.relatedItemId);
+      if (pantryItem) {
+        await this.pantryState.save({ ...pantryItem, quantity, expiryDate }, reminder.relatedItemId);
+      }
+    }
+
+    await this.reminderService.markRestocked(reminderId);
+    await this.reminderService.sync();
+    this.closeRestockSheet();
   }
 
   protected openSnoozeSheet(reminder: ReminderItem, editMode: boolean): void {

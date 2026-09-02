@@ -27,7 +27,7 @@ describe('pantry-stock-status.util', () => {
     ).toBe(true);
   });
 
-  it('treats any quantity above 1 as in stock, ignoring custom thresholds', () => {
+  it('still applies the unit floor threshold when quantity is above 1', () => {
     expect(
       getPantryLowStockThreshold({
         minQuantity: 300,
@@ -42,10 +42,10 @@ describe('pantry-stock-status.util', () => {
         unit: 'g',
         expiryDate: new Date().toISOString().slice(0, 10)
       })
-    ).toBe('in-stock');
+    ).toBe('low-stock');
   });
 
-  it('ignores the settings threshold once quantity is above 1', () => {
+  it('still applies the settings threshold when quantity is above 1', () => {
     expect(
       getPantryLowStockThreshold(
         {
@@ -66,6 +66,6 @@ describe('pantry-stock-status.util', () => {
         },
         5
       )
-    ).toBe(false);
+    ).toBe(true);
   });
 });

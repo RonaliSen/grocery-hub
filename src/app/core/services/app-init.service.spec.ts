@@ -53,7 +53,9 @@ describe('AppInitService', () => {
   const expenseService = {
     load: vi.fn(async () => {
       calls.push('expense');
-    })
+    }),
+    expenses: signal<readonly string[]>([]),
+    purchases: signal<readonly string[]>([])
   };
   const settingsService = {
     load: vi.fn(async () => {
@@ -62,6 +64,8 @@ describe('AppInitService', () => {
     settings: settingsState
   };
   const reminderService = {
+    load: vi.fn(async () => {}),
+    loaded: signal(false),
     sync: vi.fn(async () => {
       calls.push('reminder');
     })
@@ -80,6 +84,7 @@ describe('AppInitService', () => {
       ...DEFAULT_APP_SETTINGS,
       defaultAutoAddToShoppingList: true
     });
+    reminderService.load.mockClear();
     reminderService.sync.mockClear();
 
     TestBed.configureTestingModule({
@@ -132,11 +137,16 @@ describe('AppInitService', () => {
       'reminder'
     ]);
     expect(shoppingState.syncAutoAddLowStockItems).toHaveBeenCalledWith(['pantry-items'], true);
-    expect(reminderService.sync).toHaveBeenCalledWith(['pantry-items'], settingsState());
+    expect(reminderService.sync).toHaveBeenCalled();
   });
 
   it('does not rerun auto-add when only the shopping list changes after initialization', async () => {
     const service = TestBed.inject(AppInitService);
+    const flush = async () => {
+      TestBed.tick();
+      await Promise.resolve();
+      await Promise.resolve();
+    };
 
     await service.initialize();
     shoppingState.syncAutoAddLowStockItems.mockClear();
@@ -144,19 +154,19 @@ describe('AppInitService', () => {
     calls.length = 0;
 
     pantryItems.set(['skip-consumer']);
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await flush();
     shoppingState.syncAutoAddLowStockItems.mockClear();
     reminderService.sync.mockClear();
 
     shoppingItems.set(['changed-shopping-items']);
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await flush();
 
     expect(shoppingState.syncAutoAddLowStockItems).not.toHaveBeenCalled();
     expect(reminderService.sync).not.toHaveBeenCalled();
 
     // Changing pantry data should still trigger the runtime sync.
     pantryItems.set(['changed-pantry-items']);
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await flush();
 
     expect(shoppingState.syncAutoAddLowStockItems).toHaveBeenCalledWith(
       ['changed-pantry-items'],

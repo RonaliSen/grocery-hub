@@ -63,12 +63,30 @@ export class ExpenseService {
   private readonly expensesState = signal<readonly Expense[]>([]);
   private readonly purchasesState = signal<readonly PurchaseRecord[]>([]);
   private readonly budgetStoreState = signal<BudgetStore>(EMPTY_BUDGET_STORE);
+  private readonly loadedState = signal(false);
+  private loadPromise: Promise<void> | null = null;
 
   readonly expenses = computed(() => this.expensesState());
   readonly purchases = computed(() => this.purchasesState());
   readonly budgetStore = computed(() => this.budgetStoreState());
 
   async load(): Promise<void> {
+    if (this.loadedState()) {
+      return;
+    }
+
+    if (this.loadPromise) {
+      return this.loadPromise;
+    }
+
+    this.loadPromise = this.loadFromStorage().finally(() => {
+      this.loadPromise = null;
+    });
+
+    return this.loadPromise;
+  }
+
+  private async loadFromStorage(): Promise<void> {
     const [storedExpenses, storedBudgetStore, storedPurchases] = await Promise.all([
       this.storage.get<readonly Expense[]>(STORAGE_KEYS.expenses, []),
       this.storage.get<BudgetStore | Budget | LegacyBudgetMap>(STORAGE_KEYS.expenseBudget, EMPTY_BUDGET_STORE),
@@ -126,6 +144,7 @@ export class ExpenseService {
     this.expensesState.set([...expensesWithCycles].sort((a, b) => +new Date(b.date) - +new Date(a.date)));
     this.purchasesState.set(purchasesWithCycles);
     this.budgetStoreState.set(normalizedBudgetStore);
+    this.loadedState.set(true);
 
     await Promise.all([
       this.storage.set(STORAGE_KEYS.expenses, this.expensesState()),

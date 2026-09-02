@@ -10,6 +10,7 @@ import { BehaviorSubject, of } from 'rxjs';
 import { DEFAULT_APP_SETTINGS } from '../../../core/constants/app-config';
 import { NavigationHistoryService } from '../../../core/services/navigation-history.service';
 import { SettingsService } from '../../settings/services/settings.service';
+import { ShoppingListStateService } from '../../shopping-list/services/shopping-list-state.service';
 import { PantryFormPage } from './pantry-form.page';
 import { PantryDuplicateItemNameError, PantryStateService } from '../services/pantry-state.service';
 
@@ -35,6 +36,9 @@ describe('PantryFormPage', () => {
     existsByName: vi.fn<(name: string, excludeId?: string | null) => boolean>(() => false),
     save: vi.fn()
   };
+  const shoppingState = {
+    clearAutoAddDismissal: vi.fn()
+  };
 
   function configure(
     itemId: string | null = null,
@@ -46,6 +50,8 @@ describe('PantryFormPage', () => {
     pantryState.existsByName.mockReset();
     pantryState.existsByName.mockReturnValue(false);
     pantryState.save.mockReset();
+    shoppingState.clearAutoAddDismissal.mockReset();
+    shoppingState.clearAutoAddDismissal.mockResolvedValue(undefined);
     router.navigateByUrl.mockReset();
     navigationHistory.back.mockReset();
     navigationHistory.back.mockResolvedValue(true);
@@ -65,6 +71,10 @@ describe('PantryFormPage', () => {
         {
           provide: PantryStateService,
           useValue: pantryState
+        },
+        {
+          provide: ShoppingListStateService,
+          useValue: shoppingState
         },
         {
           provide: SettingsService,

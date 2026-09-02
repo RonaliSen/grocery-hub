@@ -8,6 +8,7 @@ import { PantryFilterType } from '../models/pantry-filter.model';
 import { PantryItem, PantryItemDraft } from '../models/pantry-item.model';
 import {
   getPantryLowStockThreshold,
+  getPantryStockStatus,
   isPantryItemBelowThreshold,
   shouldShowPantryLowStock
 } from '../utils/pantry-stock-status.util';
@@ -98,15 +99,28 @@ export class PantryStateService {
         return matchesQuery && matchesFilter;
       })
       .sort((left, right) => {
-        const leftRank = this.getExpirySortRank(left.expiryDate);
-        const rightRank = this.getExpirySortRank(right.expiryDate);
+        const settings = this.settingsService.settings();
+        const leftRank = this.getSortRank(
+          left,
+          settings.defaultLowStockThreshold,
+          settings.reminderSettings.expiryLeadDays
+        );
+        const rightRank = this.getSortRank(
+          right,
+          settings.defaultLowStockThreshold,
+          settings.reminderSettings.expiryLeadDays
+        );
 
         if (leftRank !== rightRank) {
           return leftRank - rightRank;
         }
 
-        if (!left.expiryDate && !right.expiryDate) {
-          return left.name.localeCompare(right.name);
+        if (left.expiryDate && !right.expiryDate) {
+          return -1;
+        }
+
+        if (!left.expiryDate && right.expiryDate) {
+          return 1;
         }
 
         if (left.expiryDate && right.expiryDate) {
@@ -258,12 +272,23 @@ export class PantryStateService {
     return name.trim().toLowerCase();
   }
 
-  private getExpirySortRank(expiryDate: string | null): number {
-    if (!expiryDate) {
-      return 2;
+  private getSortRank(item: PantryItem, defaultLowStockThreshold: number, expiryLeadDays: number): number {
+    if (item.expiryDate && isExpired(item.expiryDate)) {
+      return 0;
     }
 
-    return isExpired(expiryDate) ? 0 : 1;
+    const stockStatus = getPantryStockStatus(item, defaultLowStockThreshold);
+    if (stockStatus === 'out-of-stock') {
+      return 1;
+    }
+    if (stockStatus === 'low-stock') {
+      return 2;
+    }
+    if (item.expiryDate && isExpiringWithin(item.expiryDate, expiryLeadDays)) {
+      return 3;
+    }
+
+    return 4;
   }
 
   private normalizeItem(item: PantryItem): PantryItem {
