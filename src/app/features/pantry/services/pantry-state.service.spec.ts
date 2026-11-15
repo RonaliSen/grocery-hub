@@ -494,4 +494,52 @@ describe('PantryStateService', () => {
       quantity: 9
     });
   });
+
+  describe('setQuantities', () => {
+    it('updates only the requested items in a single write and reports how many changed', async () => {
+      repository.getAll.mockResolvedValue([
+        createItem({ id: 'milk', name: 'Milk', quantity: 2 }),
+        createItem({ id: 'rice', name: 'Rice', quantity: 5 }),
+        createItem({ id: 'oats', name: 'Oats', quantity: 1 })
+      ]);
+      const service = TestBed.inject(PantryStateService);
+      await service.load();
+
+      const changed = await service.setQuantities(new Map([['milk', 0], ['rice', 7.5]]));
+
+      expect(changed).toBe(2);
+      expect(repository.saveAll).toHaveBeenCalledTimes(1);
+      const saved = repository.saveAll.mock.calls[0][0] as PantryItem[];
+      expect(saved.map((item) => [item.id, item.quantity])).toEqual([
+        ['milk', 0],
+        ['rice', 7.5],
+        ['oats', 1]
+      ]);
+      expect(saved[0].updatedAt).not.toBe('2026-01-01T00:00:00.000Z');
+      expect(saved[2]).toEqual(createItem({ id: 'oats', name: 'Oats', quantity: 1 }));
+      expect(service.getById('milk')?.quantity).toBe(0);
+    });
+
+    it('skips items already at the requested quantity and unknown ids, without writing if nothing changed', async () => {
+      repository.getAll.mockResolvedValue([createItem({ id: 'milk', quantity: 2 })]);
+      const service = TestBed.inject(PantryStateService);
+      await service.load();
+
+      const changed = await service.setQuantities(new Map([['milk', 2], ['ghost', 4]]));
+
+      expect(changed).toBe(0);
+      expect(repository.saveAll).not.toHaveBeenCalled();
+    });
+
+    it('leaves the in-memory pantry unchanged when the write fails', async () => {
+      repository.getAll.mockResolvedValue([createItem({ id: 'milk', quantity: 2 })]);
+      repository.saveAll.mockRejectedValue(new Error('disk full'));
+      const service = TestBed.inject(PantryStateService);
+      await service.load();
+
+      await expect(service.setQuantities(new Map([['milk', 9]]))).rejects.toThrow('disk full');
+
+      expect(service.getById('milk')?.quantity).toBe(2);
+    });
+  });
 });

@@ -1,7 +1,14 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { AlertController, IonContent, IonIcon } from '@ionic/angular/standalone';
 import { ActivatedRoute, RouterLink } from '@angular/router';
-import { addOutline, closeCircleOutline, nutritionOutline, searchOutline } from 'ionicons/icons';
+import {
+  addOutline,
+  chevronForwardOutline,
+  clipboardOutline,
+  closeCircleOutline,
+  nutritionOutline,
+  searchOutline
+} from 'ionicons/icons';
 
 import { CATEGORY_FILTER_OPTIONS, DASHBOARD_EXPIRY_WINDOW_DAYS } from '../../../core/constants/app-config';
 import { isExpired, isExpiringWithin } from '../../../core/utils/date.utils';
@@ -10,6 +17,7 @@ import { ShoppingListStateService } from '../../shopping-list/services/shopping-
 import { PantryItemCardComponent } from '../components/pantry-item-card.component';
 import { PantryFilterType } from '../models/pantry-filter.model';
 import { PantryItem } from '../models/pantry-item.model';
+import { PantryAuditSessionService } from '../services/pantry-audit-session.service';
 import { PantryStateService } from '../services/pantry-state.service';
 import { shouldShowPantryLowStock } from '../utils/pantry-stock-status.util';
 
@@ -61,6 +69,20 @@ import { shouldShowPantryLowStock } from '../utils/pantry-stock-status.util';
 
     <ion-content [fullscreen]="true" class="pantry-content">
       <main class="pantry-page-shell">
+        <button
+          type="button"
+          class="audit-entry"
+          data-testid="start-inventory-audit"
+          [routerLink]="['/tabs/pantry/audit']"
+          (click)="auditSession.reset()"
+        >
+          <span class="audit-entry__icon" aria-hidden="true">
+            <ion-icon [icon]="auditIcon" />
+          </span>
+          <span class="audit-entry__label">Start Inventory Audit</span>
+          <ion-icon aria-hidden="true" [icon]="chevronIcon" class="audit-entry__chevron" />
+        </button>
+
         @if (pantryState.totalCount() === 0) {
           <app-empty-state-card
             eyebrow="No inventory yet"
@@ -249,6 +271,50 @@ import { shouldShowPantryLowStock } from '../utils/pantry-stock-status.util';
         padding: 1rem 1rem 7.5rem;
       }
 
+      .audit-entry {
+        width: 100%;
+        min-height: 3.25rem;
+        margin-bottom: 0.875rem;
+        padding: 0.5rem 0.875rem 0.5rem 0.5rem;
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        border: 1px solid var(--pantry-border);
+        border-radius: 999px;
+        background: var(--app-surface);
+        color: var(--pantry-green-deep);
+        font-size: 0.95rem;
+        font-weight: 700;
+        text-align: left;
+        transition: transform 0.2s, background-color 0.2s;
+      }
+
+      .audit-entry:active {
+        transform: scale(0.98);
+      }
+
+      .audit-entry__icon {
+        width: 2.25rem;
+        height: 2.25rem;
+        flex-shrink: 0;
+        border-radius: 999px;
+        background: #dbf8ea;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.15rem;
+      }
+
+      .audit-entry__label {
+        flex: 1;
+        color: inherit;
+      }
+
+      .audit-entry__chevron {
+        font-size: 1.1rem;
+        color: var(--pantry-muted);
+      }
+
       .item-stack {
         display: grid;
         gap: 0.75rem;
@@ -308,8 +374,11 @@ export class PantryListPage {
   protected readonly addIcon = addOutline;
   protected readonly pantryIcon = nutritionOutline;
   protected readonly pantryState = inject(PantryStateService);
+  protected readonly auditSession = inject(PantryAuditSessionService);
   protected readonly searchIcon = searchOutline;
   protected readonly clearIcon = closeCircleOutline;
+  protected readonly auditIcon = clipboardOutline;
+  protected readonly chevronIcon = chevronForwardOutline;
   protected readonly filters = [
     { value: 'all', label: 'All' },
     ...CATEGORY_FILTER_OPTIONS,

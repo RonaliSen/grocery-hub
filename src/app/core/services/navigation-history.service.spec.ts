@@ -87,4 +87,50 @@ describe('NavigationHistoryService', () => {
 
     expect(locationBackSpy).toHaveBeenCalledOnce();
   });
+
+  describe('backTo', () => {
+    it('jumps back to the most recent entry for the path, ignoring its query string', async () => {
+      const router = TestBed.inject(Router);
+      const service = TestBed.inject(NavigationHistoryService);
+      const historyGoSpy = vi.spyOn(TestBed.inject(Location), 'historyGo').mockImplementation(() => {});
+
+      await router.navigateByUrl('/tabs/pantry');
+      await router.navigateByUrl('/tabs/home');
+      await router.navigateByUrl('/tabs/pantry?filter=expiring');
+      await router.navigateByUrl('/tabs/expenses');
+      await router.navigateByUrl('/tabs/home');
+
+      await service.backTo('/tabs/pantry');
+
+      expect(historyGoSpy).toHaveBeenCalledWith(-2);
+    });
+
+    it('navigates and replaces the current entry when the path is not in history', async () => {
+      const router = TestBed.inject(Router);
+      const service = TestBed.inject(NavigationHistoryService);
+      const historyGoSpy = vi.spyOn(TestBed.inject(Location), 'historyGo');
+
+      await router.navigateByUrl('/tabs/home');
+      await router.navigateByUrl('/tabs/expenses');
+
+      await service.backTo('/tabs/pantry');
+
+      expect(historyGoSpy).not.toHaveBeenCalled();
+      expect(router.url).toBe('/tabs/pantry');
+      expect(service.history()).toEqual(['/tabs/home', '/tabs/pantry']);
+    });
+
+    it('does not treat the current entry as a previous one', async () => {
+      const router = TestBed.inject(Router);
+      const service = TestBed.inject(NavigationHistoryService);
+      const historyGoSpy = vi.spyOn(TestBed.inject(Location), 'historyGo');
+
+      await router.navigateByUrl('/tabs/pantry');
+
+      await service.backTo('/tabs/pantry');
+
+      expect(historyGoSpy).not.toHaveBeenCalled();
+      expect(service.history()).toEqual(['/tabs/pantry']);
+    });
+  });
 });

@@ -76,6 +76,33 @@ export class NavigationHistoryService {
     return this.router.navigateByUrl(fallbackUrl);
   }
 
+  /**
+   * Returns to the most recent history entry for `path` (query string and fragment are ignored),
+   * discarding every screen after it — e.g. when leaving a finished multi-step flow. If `path`
+   * isn't in the in-app history, navigates there and replaces the current entry instead, so
+   * back doesn't return to the flow.
+   */
+  async backTo(path: string): Promise<boolean> {
+    const targetPath = getPathname(path);
+    const history = this.historyState();
+    const currentIndex = history.length - 1;
+    let targetIndex = -1;
+
+    for (let index = currentIndex - 1; index >= 0; index--) {
+      if (getPathname(history[index]) === targetPath) {
+        targetIndex = index;
+        break;
+      }
+    }
+
+    if (targetIndex >= 0) {
+      this.location.historyGo(targetIndex - currentIndex);
+      return true;
+    }
+
+    return this.router.navigateByUrl(path, { replaceUrl: true });
+  }
+
   private recordNavigation(rawUrl: string): void {
     const url = normalizeUrl(rawUrl);
     const currentHistory = this.historyState();

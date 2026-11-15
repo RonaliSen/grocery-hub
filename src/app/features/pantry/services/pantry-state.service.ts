@@ -255,6 +255,40 @@ export class PantryStateService {
     );
   }
 
+  /**
+   * Sets new quantities for several items in a single storage write, so either every change is
+   * saved or none is. Items not in `quantities`, missing from the pantry, or already at the
+   * requested quantity are left untouched. Returns how many items were changed.
+   */
+  async setQuantities(quantities: ReadonlyMap<string, number>): Promise<number> {
+    const timestamp = new Date().toISOString();
+    let changedCount = 0;
+
+    const nextItems = this.itemsState().map((item) => {
+      const requested = quantities.get(item.id);
+      if (requested === undefined) {
+        return item;
+      }
+
+      const quantity = Math.max(0, requested);
+      if (quantity === item.quantity) {
+        return item;
+      }
+
+      changedCount++;
+      return { ...item, quantity, updatedAt: timestamp };
+    });
+
+    if (changedCount === 0) {
+      return 0;
+    }
+
+    await this.repository.saveAll(nextItems);
+    this.itemsState.set(nextItems);
+    this.loadedState.set(true);
+    return changedCount;
+  }
+
   async remove(itemId: string): Promise<void> {
     const nextItems = this.itemsState().filter((item) => item.id !== itemId);
     await this.repository.saveAll(nextItems);

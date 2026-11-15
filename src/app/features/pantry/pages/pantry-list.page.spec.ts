@@ -3,12 +3,13 @@ import { vi } from 'vitest';
 vi.mock('@ionic/angular/standalone', async () => import('../../../../testing/ionic-standalone.stubs'));
 
 import { TestBed } from '@angular/core/testing';
-import { provideRouter } from '@angular/router';
+import { provideRouter, Router, UrlTree } from '@angular/router';
 import { AlertController, provideIonicAngular } from '@ionic/angular/standalone';
 
 import { DEFAULT_APP_SETTINGS } from '../../../core/constants/app-config';
 import { ShoppingListStateService } from '../../shopping-list/services/shopping-list-state.service';
 import { SettingsService } from '../../settings/services/settings.service';
+import { PantryAuditSessionService } from '../services/pantry-audit-session.service';
 import { PantryRepositoryService } from '../services/pantry-repository.service';
 import { PantryStateService } from '../services/pantry-state.service';
 import { PantryListPage } from './pantry-list.page';
@@ -73,6 +74,65 @@ describe('PantryListPage', () => {
     expect(textContent).toContain('Your pantry is empty');
     expect(textContent).toContain('Add pantry item');
     // Note: 'View shopping list' removed in new design
+  });
+
+  it.each([
+    ['empty', []],
+    [
+      'populated',
+      [
+        {
+          id: 'pasta',
+          name: 'Pasta',
+          category: 'grains',
+          unit: 'box',
+          quantity: 4,
+          minQuantity: 1,
+          avgDailyUsage: null,
+          autoAddToShoppingList: true,
+          expiryDate: null,
+          notes: null,
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-01T00:00:00.000Z'
+        }
+      ]
+    ]
+  ])('shows a Start Inventory Audit button linking to the audit when the pantry is %s', async (_state, items) => {
+    repository.getAll.mockResolvedValue(items);
+
+    const pantryState = TestBed.inject(PantryStateService);
+    await pantryState.load();
+
+    const fixture = TestBed.createComponent(PantryListPage);
+    fixture.detectChanges();
+
+    const auditButton = fixture.nativeElement.querySelector(
+      '[data-testid="start-inventory-audit"]'
+    ) as HTMLButtonElement | null;
+
+    expect(auditButton).not.toBeNull();
+    expect(auditButton?.textContent).toContain('Start Inventory Audit');
+
+    const router = TestBed.inject(Router);
+    const navigateSpy = vi.spyOn(router, 'navigateByUrl').mockResolvedValue(true);
+    auditButton?.click();
+
+    expect(navigateSpy).toHaveBeenCalledTimes(1);
+    expect(router.serializeUrl(navigateSpy.mock.calls[0][0] as UrlTree)).toBe('/tabs/pantry/audit');
+  });
+
+  it('starts each inventory audit with a fresh selection', async () => {
+    const pantryState = TestBed.inject(PantryStateService);
+    await pantryState.load();
+    const auditSession = TestBed.inject(PantryAuditSessionService);
+    const resetSpy = vi.spyOn(auditSession, 'reset');
+    vi.spyOn(TestBed.inject(Router), 'navigateByUrl').mockResolvedValue(true);
+
+    const fixture = TestBed.createComponent(PantryListPage);
+    fixture.detectChanges();
+    (fixture.nativeElement.querySelector('[data-testid="start-inventory-audit"]') as HTMLButtonElement).click();
+
+    expect(resetSpy).toHaveBeenCalledTimes(1);
   });
 
   it('renders pantry items and filters them by search query', async () => {
