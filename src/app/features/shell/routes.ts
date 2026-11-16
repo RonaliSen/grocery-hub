@@ -30,6 +30,10 @@ export const SHELL_ROUTES: Routes = [
         loadChildren: () => import('../profile/routes').then((m) => m.PROFILE_ROUTES)
       },
       {
+        path: 'expiry-tracker',
+        loadChildren: () => import('../expiry-tracker/routes').then((m) => m.EXPIRY_TRACKER_ROUTES)
+      },
+      {
         path: '',
         pathMatch: 'full',
         redirectTo: 'home'

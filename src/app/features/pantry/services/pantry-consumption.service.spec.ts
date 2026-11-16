@@ -360,4 +360,139 @@ describe('PantryConsumptionService', () => {
       ]);
     });
   });
+
+  describe('undoable use', () => {
+    async function setup(items: PantryItem[] = [createItem()], logs: unknown[] = []) {
+      pantryRepository.getAll.mockResolvedValue(items);
+      consumptionRepository.getAll.mockResolvedValue(logs);
+      const pantryState = TestBed.inject(PantryStateService);
+      const service = TestBed.inject(PantryConsumptionService);
+      await pantryState.load();
+      return { pantryState, service };
+    }
+
+    it('returns the recorded entry', async () => {
+      const { pantryState, service } = await setup();
+
+      const log = await service.consumeUndoable('item-1', 1);
+
+      expect(log).toEqual(
+        expect.objectContaining({ itemId: 'item-1', actionType: 'decrement', amount: 1, previousQuantity: 3, nextQuantity: 2 })
+      );
+      expect(service.logs()).toEqual([log]);
+      expect(pantryState.getById('item-1')?.quantity).toBe(2);
+    });
+
+    it('returns null when nothing was used', async () => {
+      const { service } = await setup([createItem({ quantity: 0 })]);
+
+      await expect(service.consumeUndoable('item-1', 1)).resolves.toBeNull();
+      await expect(service.consumeUndoable('missing', 1)).resolves.toBeNull();
+      expect(service.logs()).toEqual([]);
+    });
+
+    it('restores the quantity and removes the use from the history', async () => {
+      const earlier = {
+        id: 'earlier',
+        itemId: 'item-1',
+        actionType: 'increment',
+        amount: 2,
+        previousQuantity: 1,
+        nextQuantity: 3,
+        createdAt: '2026-01-02T00:00:00.000Z'
+      };
+      const { pantryState, service } = await setup([createItem()], [earlier]);
+      const log = (await service.consumeUndoable('item-1', 1))!;
+
+      await expect(service.undoConsumption(log.id)).resolves.toBe(true);
+
+      expect(pantryState.getById('item-1')?.quantity).toBe(3);
+      // Only the use is gone: no extra restock entry, older history untouched.
+      expect(service.logs().map((entry) => entry.id)).toEqual(['earlier']);
+      expect(consumptionRepository.saveAll).toHaveBeenLastCalledWith([expect.objectContaining({ id: 'earlier' })]);
+    });
+
+    it('brings a used-up item back', async () => {
+      const { pantryState, service } = await setup([createItem({ quantity: 0.5, unit: 'kg' })]);
+      const log = (await service.consumeUndoable('item-1', 1))!;
+      expect(pantryState.getById('item-1')?.quantity).toBe(0);
+
+      await service.undoConsumption(log.id);
+
+      expect(pantryState.getById('item-1')?.quantity).toBe(0.5);
+      expect(service.logs()).toEqual([]);
+    });
+
+    it('adds the amount back, keeping changes made after the use', async () => {
+      const { pantryState, service } = await setup();
+      const log = (await service.consumeUndoable('item-1', 1))!;
+      await service.adjust('item-1', 4);
+
+      await service.undoConsumption(log.id);
+
+      expect(pantryState.getById('item-1')?.quantity).toBe(7);
+      expect(service.logs().map((entry) => entry.actionType)).toEqual(['increment']);
+    });
+
+    it('undoes only once', async () => {
+      const { pantryState, service } = await setup();
+      const log = (await service.consumeUndoable('item-1', 1))!;
+
+      const results = await Promise.all([service.undoConsumption(log.id), service.undoConsumption(log.id)]);
+
+      expect(results).toEqual([true, false]);
+      expect(pantryState.getById('item-1')?.quantity).toBe(3);
+    });
+
+    it('refuses entries that are not uses, or unknown', async () => {
+      const { pantryState, service } = await setup();
+      await service.adjust('item-1', 1);
+      const restock = service.logs()[0];
+
+      await expect(service.undoConsumption(restock.id)).resolves.toBe(false);
+      await expect(service.undoConsumption('missing')).resolves.toBe(false);
+      expect(pantryState.getById('item-1')?.quantity).toBe(4);
+      expect(service.logs()).toHaveLength(1);
+    });
+
+    it('leaves the history alone when the item has been deleted since', async () => {
+      const { service } = await setup();
+      const log = (await service.consumeUndoable('item-1', 1))!;
+      await service.removeItem('item-1');
+
+      await expect(service.undoConsumption(log.id)).resolves.toBe(false);
+      expect(service.logs().map((entry) => entry.actionType)).toEqual(['deleted', 'decrement']);
+    });
+
+    it('waits for a use still being saved before undoing it', async () => {
+      const { pantryState, service } = await setup();
+      pantryRepository.saveAll.mockImplementation(() => new Promise((resolve) => setTimeout(resolve, 5)));
+
+      const use = service.consumeUndoable('item-1', 1);
+      const log = (await use)!;
+      const [undone, secondUse] = await Promise.all([
+        service.undoConsumption(log.id),
+        service.consumeUndoable('item-1', 1)
+      ]);
+
+      expect(undone).toBe(true);
+      expect(secondUse?.previousQuantity).toBe(3);
+      expect(pantryState.getById('item-1')?.quantity).toBe(2);
+      expect(service.logs()).toEqual([secondUse]);
+    });
+
+    it('puts the quantity back if the history cannot be saved', async () => {
+      const { pantryState, service } = await setup();
+      const log = (await service.consumeUndoable('item-1', 1))!;
+      consumptionRepository.saveAll.mockRejectedValueOnce(new Error('disk full'));
+
+      await expect(service.undoConsumption(log.id)).rejects.toThrow('disk full');
+
+      expect(pantryState.getById('item-1')?.quantity).toBe(2);
+      expect(service.logs()).toEqual([log]);
+      // The queue keeps working afterwards.
+      await expect(service.undoConsumption(log.id)).resolves.toBe(true);
+      expect(pantryState.getById('item-1')?.quantity).toBe(3);
+    });
+  });
 });

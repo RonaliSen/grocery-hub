@@ -3,7 +3,7 @@ import { computed, inject, Injectable, signal } from '@angular/core';
 import { DEFAULT_APP_SETTINGS } from '../../../core/constants/app-config';
 import { STORAGE_KEYS } from '../../../core/constants/storage-keys';
 import { StorageService } from '../../../core/services/storage.service';
-import { ReminderSettings } from '../../reminders/models/reminder-settings.model';
+import { normalizeExpiryLeadDays, ReminderSettings } from '../../reminders/models/reminder-settings.model';
 import { AppSettings, ThemePreference } from '../models/app-settings.model';
 import { UserProfile } from '../models/profile.model';
 
@@ -47,6 +47,7 @@ export class SettingsService {
       reminderSettings: {
         ...DEFAULT_APP_SETTINGS.reminderSettings,
         ...nextReminderSettings,
+        expiryLeadDays: normalizeExpiryLeadDays(nextReminderSettings.expiryLeadDays),
         reminderHour:
           storedReminderSettings.reminderHour ??
           storedReminderSettings.lowStockDigestHour ??

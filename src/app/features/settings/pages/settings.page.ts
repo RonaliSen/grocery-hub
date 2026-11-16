@@ -19,7 +19,11 @@ import {
 } from 'ionicons/icons';
 
 import { NotificationsService } from '../../../core/services/notifications.service';
-import { ReminderSettings } from '../../reminders/models/reminder-settings.model';
+import {
+  EXPIRY_LEAD_DAY_OPTIONS,
+  ExpiryLeadDays,
+  ReminderSettings
+} from '../../reminders/models/reminder-settings.model';
 import { AppSettings } from '../models/app-settings.model';
 import { UserProfile } from '../models/profile.model';
 import { SettingsService } from '../services/settings.service';
@@ -233,6 +237,37 @@ import { SettingsService } from '../services/settings.service';
               >
                 <span class="account-toggle__thumb"></span>
               </button>
+            </div>
+
+            <div class="account-toggle-row account-lead-row">
+              <span class="account-toggle-row__icon" aria-hidden="true">📅</span>
+              <span class="account-toggle-row__text">
+                <span class="account-toggle-row__title" id="expiry-lead-label">Remind me</span>
+                <span class="account-toggle-row__hint" id="expiry-lead-hint">
+                  Before food expires · also sets “expiring soon” in the Expiry Tracker
+                </span>
+              </span>
+              <div
+                class="lead-options"
+                role="group"
+                aria-labelledby="expiry-lead-label"
+                aria-describedby="expiry-lead-hint"
+              >
+                @for (option of expiryLeadOptions; track option) {
+                  <button
+                    type="button"
+                    class="lead-option"
+                    data-testid="expiry-lead-option"
+                    [class.lead-option--active]="expiryLeadDays() === option"
+                    [attr.aria-pressed]="expiryLeadDays() === option"
+                    [attr.aria-label]="option + (option === 1 ? ' day' : ' days') + ' before expiry'"
+                    [disabled]="isSaving()"
+                    (click)="setExpiryLeadDays(option)"
+                  >
+                    {{ option }} {{ option === 1 ? 'day' : 'days' }}
+                  </button>
+                }
+              </div>
             </div>
           </section>
 
@@ -805,6 +840,55 @@ import { SettingsService } from '../services/settings.service';
         opacity: 0.6;
       }
 
+      /* Expiry reminder lead time: segmented 1 / 3 / 7 days */
+      .account-lead-row {
+        flex-wrap: wrap;
+      }
+
+      .lead-options {
+        flex: 1 1 100%;
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 4px;
+        padding: 4px;
+        border-radius: 999px;
+        background: var(--h-surface);
+        border: 1px solid var(--h-line);
+      }
+
+      .lead-option {
+        min-height: 38px;
+        padding: 0 10px;
+        border: none;
+        border-radius: 999px;
+        background: transparent;
+        color: var(--h-ink-soft);
+        font-size: 0.82rem;
+        font-weight: 800;
+        white-space: nowrap;
+        transition: background-color 160ms ease, color 160ms ease;
+      }
+
+      .lead-option--active {
+        background: var(--h-btn-bg);
+        color: var(--h-btn-fg);
+      }
+
+      .lead-option:disabled {
+        cursor: default;
+      }
+
+      .lead-option:disabled:not(.lead-option--active) {
+        opacity: 0.6;
+      }
+
+      @media (min-width: 600px) {
+        .lead-options {
+          flex: 0 0 auto;
+          width: 270px;
+        }
+      }
+
       /* Navigation rows */
       .account-nav-row {
         display: flex;
@@ -1078,6 +1162,18 @@ export class SettingsPage {
       appSettings: { notificationsEnabled: nextValue },
       requestPermissions: nextValue && !current.notificationsEnabled,
     });
+  }
+
+  protected readonly expiryLeadOptions = EXPIRY_LEAD_DAY_OPTIONS;
+  protected readonly expiryLeadDays = computed(() => this.settings().reminderSettings.expiryLeadDays);
+
+  /** Saved straight away (like the toggles) and kept across restarts by SettingsService. */
+  protected async setExpiryLeadDays(days: ExpiryLeadDays): Promise<void> {
+    if (this.expiryLeadDays() === days) {
+      return;
+    }
+
+    await this.persistChanges({ reminderSettings: { expiryLeadDays: days } });
   }
 
   protected async toggleExpiryReminder(): Promise<void> {

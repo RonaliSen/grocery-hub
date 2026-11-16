@@ -1,6 +1,5 @@
 import { computed, inject, Injectable, signal } from '@angular/core';
 
-import { DASHBOARD_EXPIRY_WINDOW_DAYS } from '../../../core/constants/app-config';
 import { isExpired, isExpiringWithin } from '../../../core/utils/date.utils';
 import { createId } from '../../../core/utils/id.utils';
 import { SettingsService } from '../../settings/services/settings.service';
@@ -12,6 +11,7 @@ import {
   isPantryItemBelowThreshold,
   shouldShowPantryLowStock
 } from '../utils/pantry-stock-status.util';
+import { getPantryExpiryStatus } from '../utils/pantry-expiry.util';
 import { PantryRepositoryService } from './pantry-repository.service';
 
 export class PantryDuplicateItemNameError extends Error {
@@ -86,10 +86,11 @@ export class PantryStateService {
         if (!matchesFilter) {
           if (selectedFilter === 'low-stock') {
             matchesFilter = shouldShowPantryLowStock(item, this.settingsService.settings().defaultLowStockThreshold);
-          } else if (selectedFilter === 'expiring') {
-            matchesFilter = !!item.expiryDate && isExpiringWithin(item.expiryDate, DASHBOARD_EXPIRY_WINDOW_DAYS);
-          } else if (selectedFilter === 'expired') {
-            matchesFilter = !!item.expiryDate && isExpired(item.expiryDate);
+          } else if (selectedFilter === 'expiring' || selectedFilter === 'expired') {
+            // Same rule and lead time as the hero counts and the Expiry Tracker.
+            matchesFilter =
+              getPantryExpiryStatus(item, this.settingsService.settings().reminderSettings.expiryLeadDays) ===
+              selectedFilter;
           } else {
             // It's a category
             matchesFilter = item.category === selectedFilter;

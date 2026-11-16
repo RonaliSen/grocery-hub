@@ -12,6 +12,7 @@ import { SettingsService } from '../../settings/services/settings.service';
 import { PantryItem } from '../models/pantry-item.model';
 import { PantryImagePipe } from '../pipes/pantry-image.pipe';
 import { categoryTileColor } from '../utils/pantry-category-style.util';
+import { getExpiryDateTone } from '../utils/pantry-expiry.util';
 import { getPantryStockStatus } from '../utils/pantry-stock-status.util';
 
 @Component({
@@ -375,24 +376,8 @@ export class PantryItemCardComponent {
     }
   }
 
+  /** Expiring = within the expiry reminder lead time from Account settings. */
   protected expiryTone(): 'danger' | 'warning' | 'muted' {
-    const expiryDate = this.item().expiryDate;
-    if (!expiryDate) {
-      return 'muted';
-    }
-
-    const today = new Date();
-    const expiry = new Date(expiryDate);
-    const diffInDays = Math.floor((expiry.getTime() - today.getTime()) / 86_400_000);
-
-    if (diffInDays < 0) {
-      return 'danger';
-    }
-
-    if (diffInDays <= 3) {
-      return 'warning';
-    }
-
-    return 'muted';
+    return getExpiryDateTone(this.item().expiryDate, this.settingsService.settings().reminderSettings.expiryLeadDays);
   }
 }

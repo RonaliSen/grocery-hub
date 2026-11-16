@@ -60,7 +60,6 @@ type LegacyReminderStore = Partial<ReminderStore> & {
   readonly states?: readonly LegacyReminderStateRecord[];
 };
 
-const EXPIRY_WINDOW_DAYS = 3;
 const CART_INACTIVITY_DAYS = 3;
 const DEFAULT_CUSTOM_REMINDER_HOUR = 9;
 const MAX_HISTORY_ITEMS = 150;
@@ -511,9 +510,15 @@ export class ReminderService {
     ];
   }
 
+  /** Days before expiry to remind, as chosen in Account settings (1, 3 or 7). */
+  private expiryLeadDays(): number {
+    return this.settingsService.settings().reminderSettings.expiryLeadDays;
+  }
+
   private buildExpiryReminders(items: readonly PantryItem[]): readonly InternalReminder[] {
+    const leadDays = this.expiryLeadDays();
     return items
-      .filter((item) => item.expiryDate && differenceInCalendarDays(item.expiryDate) <= EXPIRY_WINDOW_DAYS)
+      .filter((item) => item.expiryDate && differenceInCalendarDays(item.expiryDate) <= leadDays)
       .map((item) => {
         const daysLeft = differenceInCalendarDays(item.expiryDate!);
         const status = daysLeft < 0 ? 'overdue' : 'due-soon';
@@ -887,12 +892,14 @@ export class ReminderService {
 
   private getNotificationDate(reminder: InternalReminder): Date | null {
     if (reminder.type === 'expiry') {
-      const expiryDate = reminder.id.split('-').at(-1);
+      // The id ends with the expiry date: `expiry-<itemId>-YYYY-MM-DD`. (Splitting
+      // on '-' would only return the day, giving an invalid notification date.)
+      const expiryDate = /(\d{4}-\d{2}-\d{2})$/.exec(reminder.id)?.[1];
       if (!expiryDate) {
         return null;
       }
 
-      const notificationDate = addDays(new Date(`${expiryDate}T00:00:00`), -EXPIRY_WINDOW_DAYS);
+      const notificationDate = addDays(new Date(`${expiryDate}T00:00:00`), -this.expiryLeadDays());
       return scheduleAtLocalHour(
         toLocalDateOnly(notificationDate),
         this.settingsService.settings().reminderSettings.reminderHour

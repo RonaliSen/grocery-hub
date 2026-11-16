@@ -156,4 +156,86 @@ describe('SettingsPage', () => {
       }
     });
   });
+
+  describe('expiry reminder lead time', () => {
+    function render() {
+      const fixture = TestBed.createComponent(SettingsPage);
+      fixture.detectChanges();
+      return fixture;
+    }
+
+    function options(fixture: ReturnType<typeof render>): HTMLButtonElement[] {
+      return Array.from(fixture.nativeElement.querySelectorAll('[data-testid="expiry-lead-option"]'));
+    }
+
+    it('offers 1, 3 and 7 days with the saved choice selected', () => {
+      const fixture = render();
+
+      expect(options(fixture).map((option) => option.textContent?.trim())).toEqual(['1 day', '3 days', '7 days']);
+      expect(options(fixture).map((option) => option.getAttribute('aria-pressed'))).toEqual(['false', 'true', 'false']);
+      expect(options(fixture)[2].getAttribute('aria-label')).toBe('7 days before expiry');
+      expect(fixture.nativeElement.querySelector('.lead-options').getAttribute('aria-labelledby')).toBe(
+        'expiry-lead-label'
+      );
+    });
+
+    it('saves the chosen lead time straight away', async () => {
+      const fixture = render();
+
+      options(fixture)[2].click();
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      expect(settingsService.save).toHaveBeenCalledTimes(1);
+      expect(settingsService.save).toHaveBeenCalledWith({
+        ...settingsState(),
+        reminderSettings: { ...DEFAULT_APP_SETTINGS.reminderSettings, reminderHour: 8, expiryLeadDays: 7 }
+      });
+      expect(options(fixture).map((option) => option.getAttribute('aria-pressed'))).toEqual(['false', 'false', 'true']);
+      expect(notificationsService.ensurePermissions).not.toHaveBeenCalled();
+    });
+
+    it('does not save when the current choice is tapped again', async () => {
+      const fixture = render();
+
+      options(fixture)[1].click();
+      await fixture.whenStable();
+
+      expect(settingsService.save).not.toHaveBeenCalled();
+    });
+
+    it('disables the choices while a change is being saved', async () => {
+      let finishSave!: () => void;
+      settingsService.save.mockImplementationOnce(
+        (settings: AppSettings) =>
+          new Promise<void>((resolve) => {
+            finishSave = () => {
+              settingsState.set(settings);
+              resolve();
+            };
+          })
+      );
+      const fixture = render();
+
+      options(fixture)[0].click();
+      fixture.detectChanges();
+      expect(options(fixture).every((option) => option.disabled)).toBe(true);
+
+      finishSave();
+      await fixture.whenStable();
+      fixture.detectChanges();
+      expect(options(fixture).some((option) => option.disabled)).toBe(false);
+      expect(settingsState().reminderSettings.expiryLeadDays).toBe(1);
+    });
+
+    it('stays available when expiry reminders are off (the Expiry Tracker still uses it)', () => {
+      settingsState.update((settings) => ({
+        ...settings,
+        reminderSettings: { ...settings.reminderSettings, expiryRemindersEnabled: false }
+      }));
+      const fixture = render();
+
+      expect(options(fixture).some((option) => option.disabled)).toBe(false);
+    });
+  });
 });

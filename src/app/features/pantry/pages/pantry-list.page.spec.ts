@@ -6,7 +6,11 @@ import { TestBed } from '@angular/core/testing';
 import { provideRouter, Router, UrlTree } from '@angular/router';
 import { AlertController, provideIonicAngular } from '@ionic/angular/standalone';
 
+import { signal } from '@angular/core';
+
 import { DEFAULT_APP_SETTINGS } from '../../../core/constants/app-config';
+import { addDays, toLocalDateOnly } from '../../../core/utils/date.utils';
+import { AppSettings } from '../../settings/models/app-settings.model';
 import { ShoppingListStateService } from '../../shopping-list/services/shopping-list-state.service';
 import { SettingsService } from '../../settings/services/settings.service';
 import { PantryAuditSessionService } from '../services/pantry-audit-session.service';
@@ -1059,4 +1063,130 @@ describe('PantryListPage', () => {
       expect(heroText()).toContain('1 item needs a look.');
     });
   });
+
+  describe('expiry counts follow the reminder lead time from Account settings', () => {
+    const settingsState = signal<AppSettings>(DEFAULT_APP_SETTINGS);
+
+    function setLeadDays(expiryLeadDays: number): void {
+      settingsState.update((settings) => ({
+        ...settings,
+        reminderSettings: { ...settings.reminderSettings, expiryLeadDays }
+      }));
+    }
+
+    function inDays(days: number): string {
+      return toLocalDateOnly(addDays(new Date(), days));
+    }
+
+    function item(id: string, expiryDate: string | null, quantity = 2) {
+      return {
+        id,
+        name: id,
+        category: 'dairy',
+        unit: 'count',
+        quantity,
+        minQuantity: 0,
+        avgDailyUsage: null,
+        autoAddToShoppingList: false,
+        expiryDate,
+        germanStore: false,
+        indianStore: false,
+        notes: null,
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z'
+      };
+    }
+
+    beforeEach(() => {
+      settingsState.set(DEFAULT_APP_SETTINGS);
+      TestBed.overrideProvider(SettingsService, { useValue: { settings: settingsState } });
+      repository.getAll.mockResolvedValue([
+        item('Expired', inDays(-2)),
+        item('Today', inDays(0)),
+        item('Tomorrow', inDays(1)),
+        item('ThreeDays', inDays(3)),
+        item('FiveDays', inDays(5)),
+        item('TwoWeeks', inDays(14)),
+        item('UsedUp', inDays(-1), 0)
+      ]);
+    });
+
+    async function render() {
+      const pantryState = TestBed.inject(PantryStateService);
+      await pantryState.load();
+      const fixture = TestBed.createComponent(PantryListPage);
+      fixture.detectChanges();
+      return { fixture, pantryState };
+    }
+
+    function heroStats(fixture: { nativeElement: HTMLElement }): Record<string, string> {
+      const stats = Array.from(fixture.nativeElement.querySelectorAll('.hero-stat')) as HTMLElement[];
+      return Object.fromEntries(
+        stats.map((stat) => [stat.querySelector('dt')?.textContent?.trim(), stat.querySelector('dd')?.textContent?.trim()])
+      );
+    }
+
+    function highlightedCards(fixture: { nativeElement: HTMLElement }): string[] {
+      return (Array.from(fixture.nativeElement.querySelectorAll('app-pantry-item-card')) as HTMLElement[])
+        .filter((card) => card.querySelector('.expiry-date.is-expiring'))
+        .map((card) => card.querySelector('.item-name')?.textContent?.trim() ?? '');
+    }
+
+    it('uses the default 3-day lead time', async () => {
+      const { fixture } = await render();
+
+      expect(heroStats(fixture)['Expiring soon']).toBe('3');
+      expect(heroStats(fixture)['Expired']).toBe('1');
+      expect(highlightedCards(fixture).sort()).toEqual(['ThreeDays', 'Today', 'Tomorrow']);
+    });
+
+    it.each([
+      [1, '2'],
+      [3, '3'],
+      [7, '4']
+    ])('counts items expiring within %i day(s)', async (leadDays, expected) => {
+      setLeadDays(leadDays);
+      const { fixture } = await render();
+
+      expect(heroStats(fixture)['Expiring soon']).toBe(expected);
+    });
+
+    it('updates the counts, highlights and list as soon as the setting changes', async () => {
+      const { fixture, pantryState } = await render();
+      pantryState.setStockFilter('expiring');
+      fixture.detectChanges();
+      const listed = () =>
+        (Array.from(fixture.nativeElement.querySelectorAll('.item-name')) as HTMLElement[]).map((el) =>
+          el.textContent?.trim()
+        );
+      expect(listed()).toEqual(['Today', 'Tomorrow', 'ThreeDays']);
+
+      setLeadDays(7);
+      fixture.detectChanges();
+
+      expect(heroStats(fixture)['Expiring soon']).toBe('4');
+      expect(listed()).toEqual(['Today', 'Tomorrow', 'ThreeDays', 'FiveDays']);
+      expect(highlightedCards(fixture).sort()).toEqual(['FiveDays', 'ThreeDays', 'Today', 'Tomorrow']);
+
+      setLeadDays(1);
+      fixture.detectChanges();
+
+      expect(heroStats(fixture)['Expiring soon']).toBe('2');
+      expect(listed()).toEqual(['Today', 'Tomorrow']);
+      expect(highlightedCards(fixture).sort()).toEqual(['Today', 'Tomorrow']);
+    });
+
+    it('leaves used-up items out of the expiry counts and the Expired view, like the Expiry Tracker', async () => {
+      const { fixture, pantryState } = await render();
+
+      expect(heroStats(fixture)['Expired']).toBe('1');
+
+      pantryState.setStockFilter('expired');
+      fixture.detectChanges();
+      expect(
+        (Array.from(fixture.nativeElement.querySelectorAll('.item-name')) as HTMLElement[]).map((el) => el.textContent?.trim())
+      ).toEqual(['Expired']);
+    });
+  });
 });
+

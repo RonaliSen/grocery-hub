@@ -13,6 +13,7 @@ import { PantryItem } from '../../pantry/models/pantry-item.model';
 import { PantryConsumptionService } from '../../pantry/services/pantry-consumption.service';
 import { PantryStateService } from '../../pantry/services/pantry-state.service';
 import { ExpenseService } from '../../expenses/services/expense.service';
+import { AppSettings } from '../../settings/models/app-settings.model';
 import { SettingsService } from '../../settings/services/settings.service';
 import { ShoppingListStateService } from '../../shopping-list/services/shopping-list-state.service';
 import { DEFAULT_REMINDER_STORE } from '../models/reminder.model';
@@ -47,6 +48,7 @@ function createPantryItem(overrides: Partial<PantryItem> = {}): PantryItem {
 
 describe('ReminderService', () => {
   const pantryItems = signal<readonly PantryItem[]>([]);
+  const settingsState = signal<AppSettings>(DEFAULT_APP_SETTINGS);
   const shoppingItems = signal<any[]>([]);
   const expensePurchases = signal<any[]>([]);
   const repository = {
@@ -68,6 +70,7 @@ describe('ReminderService', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-03-15T08:00:00'));
     pantryItems.set([]);
+    settingsState.set(DEFAULT_APP_SETTINGS);
     shoppingItems.set([]);
     expensePurchases.set([]);
     repository.getStore.mockReset();
@@ -122,7 +125,7 @@ describe('ReminderService', () => {
         {
           provide: SettingsService,
           useValue: {
-            settings: computed(() => DEFAULT_APP_SETTINGS)
+            settings: computed(() => settingsState())
           }
         },
         {
@@ -256,5 +259,96 @@ describe('ReminderService', () => {
 
     expect(service.getVisibleReminders('low-stock')).toHaveLength(1);
     expect(service.getSnoozedReminders('low-stock')).toHaveLength(0);
+  });
+
+  describe('expiry reminder lead time', () => {
+    // System time: Sun 15 Mar 2026, 08:00 — before the default 09:00 reminder hour.
+    function setLeadDays(expiryLeadDays: number): void {
+      settingsState.set({
+        ...DEFAULT_APP_SETTINGS,
+        reminderSettings: { ...DEFAULT_APP_SETTINGS.reminderSettings, expiryLeadDays }
+      });
+    }
+
+    function expiryTitles(service: ReminderService): string[] {
+      return service.getVisibleReminders('expiry').map((reminder) => reminder.title);
+    }
+
+    function scheduledExpiryNotifications(): { title: string; at: Date }[] {
+      const notifications = notifications_.replaceScheduledReminders.mock.calls.at(-1)?.[0] ?? [];
+      return notifications
+        .filter((notification: any) => notification.extra?.type === 'expiry')
+        .map((notification: any) => ({ title: notification.title, at: notification.schedule.at }));
+    }
+
+    const notifications_ = notifications;
+
+    beforeEach(() => {
+      pantryItems.set([
+        createPantryItem({ id: 'milk', name: 'Milk', minQuantity: 0, expiryDate: '2026-03-16' }),
+        createPantryItem({ id: 'eggs', name: 'Eggs', minQuantity: 0, expiryDate: '2026-03-18' }),
+        createPantryItem({ id: 'cheese', name: 'Cheese', minQuantity: 0, expiryDate: '2026-03-22' })
+      ]);
+    });
+
+    it('keeps the previous 3-day window by default', async () => {
+      const service = TestBed.inject(ReminderService);
+      await service.load();
+      await service.sync();
+
+      expect(expiryTitles(service)).toEqual(expect.arrayContaining(['Milk', 'Eggs']));
+      expect(expiryTitles(service)).not.toContain('Cheese');
+    });
+
+    it.each([
+      [1, ['Milk']],
+      [3, ['Milk', 'Eggs']],
+      [7, ['Milk', 'Eggs', 'Cheese']]
+    ])('with %i day(s) it reminds about items expiring within that window', async (leadDays, expected) => {
+      setLeadDays(leadDays);
+      const service = TestBed.inject(ReminderService);
+      await service.load();
+      await service.sync();
+
+      expect([...expiryTitles(service)].sort()).toEqual([...expected].sort());
+    });
+
+    it('schedules the notification that many days before expiry, at the reminder hour', async () => {
+      setLeadDays(7);
+      const service = TestBed.inject(ReminderService);
+      await service.load();
+      await service.sync();
+
+      // Cheese expires on the 22nd: 7 days ahead is today, at 09:00.
+      expect(scheduledExpiryNotifications()).toContainEqual({
+        title: 'Cheese expires soon',
+        at: new Date('2026-03-15T09:00:00')
+      });
+    });
+
+    it('schedules expiry notifications at a valid date (regression: the date was parsed as just the day)', async () => {
+      const service = TestBed.inject(ReminderService);
+      await service.load();
+      await service.sync();
+
+      const expiryNotifications = scheduledExpiryNotifications();
+      expect(expiryNotifications.length).toBeGreaterThan(0);
+      for (const { at } of expiryNotifications) {
+        expect(Number.isNaN(at.getTime())).toBe(false);
+      }
+    });
+
+    it('reschedules when the lead time changes', async () => {
+      const service = TestBed.inject(ReminderService);
+      await service.load();
+      await service.sync();
+      // 3 days: Eggs (18th) is due today at 09:00; Cheese isn't reminded yet.
+      expect(scheduledExpiryNotifications().map((entry) => entry.title)).toEqual(['Eggs expires soon']);
+
+      setLeadDays(1);
+      await service.sync();
+      // 1 day: only Milk (16th) is due today.
+      expect(scheduledExpiryNotifications().map((entry) => entry.title)).toEqual(['Milk expires soon']);
+    });
   });
 });

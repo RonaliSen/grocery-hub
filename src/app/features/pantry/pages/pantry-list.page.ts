@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, inject, viewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, signal, viewChild } from '@angular/core';
 import { AlertController, IonContent, IonIcon } from '@ionic/angular/standalone';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import {
@@ -9,12 +9,7 @@ import {
   searchOutline
 } from 'ionicons/icons';
 
-import {
-  CATEGORY_FILTER_OPTIONS,
-  CATEGORY_LABELS,
-  DASHBOARD_EXPIRY_WINDOW_DAYS
-} from '../../../core/constants/app-config';
-import { isExpired, isExpiringWithin } from '../../../core/utils/date.utils';
+import { CATEGORY_FILTER_OPTIONS, CATEGORY_LABELS } from '../../../core/constants/app-config';
 import { SettingsService } from '../../settings/services/settings.service';
 import { ShoppingListStateService } from '../../shopping-list/services/shopping-list-state.service';
 import { PantryConsumptionInsightsComponent } from '../components/pantry-consumption-insights.component';
@@ -25,6 +20,7 @@ import { PantryAuditSessionService } from '../services/pantry-audit-session.serv
 import { PantryConsumptionService } from '../services/pantry-consumption.service';
 import { PantryStateService } from '../services/pantry-state.service';
 import { CATEGORY_EMOJI } from '../utils/pantry-category-style.util';
+import { getPantryExpiryStatus } from '../utils/pantry-expiry.util';
 import { getPantryStockStatus, shouldShowPantryLowStock } from '../utils/pantry-stock-status.util';
 
 /** Emoji shown in each filter pill (decorative; rendered via CSS). */
@@ -686,10 +682,15 @@ export class PantryListPage {
   /**
    * Hero summary. Uses the same rules as the item cards (stock status with the
    * user's low-stock threshold) and the Expiring/Expired filters, so the
-   * numbers always agree with what the list shows.
+   * numbers always agree with what the list shows. "Expiring soon" follows the
+   * expiry reminder lead time from Account settings — the same rule as the
+   * Expiry Tracker (see pantry-expiry.util) — and updates as soon as it changes.
    */
   protected readonly summary = computed(() => {
-    const threshold = this.settingsService.settings().defaultLowStockThreshold;
+    const settings = this.settingsService.settings();
+    const threshold = settings.defaultLowStockThreshold;
+    const leadDays = settings.reminderSettings.expiryLeadDays;
+    const today = this.today();
     let runningLow = 0;
     let expiringSoon = 0;
     let expired = 0;
@@ -697,9 +698,9 @@ export class PantryListPage {
 
     for (const item of this.pantryState.items()) {
       const isLow = getPantryStockStatus(item, threshold) !== 'in-stock';
-      const isExpiring =
-        !!item.expiryDate && isExpiringWithin(item.expiryDate, DASHBOARD_EXPIRY_WINDOW_DAYS);
-      const hasExpired = !!item.expiryDate && isExpired(item.expiryDate);
+      const expiryStatus = getPantryExpiryStatus(item, leadDays, today);
+      const isExpiring = expiryStatus === 'expiring';
+      const hasExpired = expiryStatus === 'expired';
 
       runningLow += isLow ? 1 : 0;
       expiringSoon += isExpiring ? 1 : 0;
@@ -720,6 +721,9 @@ export class PantryListPage {
     );
   });
 
+  /** Re-read on every visit, so expiry counts move on with the calendar. */
+  private readonly today = signal(new Date());
+
   /** Consumption insights (analytics, top items, usage trend, recent activity). */
   private readonly insights = viewChild(PantryConsumptionInsightsComponent);
 
@@ -738,17 +742,20 @@ export class PantryListPage {
 
   protected filterCount(filter: PantryFilterType): number {
     if (filter === 'all') return this.pantryState.totalCount();
-    
+
+    const leadDays = this.settingsService.settings().reminderSettings.expiryLeadDays;
     return this.pantryState.items().filter(item => {
       if (filter === 'low-stock') return shouldShowPantryLowStock(item);
-      if (filter === 'expiring') return !!item.expiryDate && isExpiringWithin(item.expiryDate, DASHBOARD_EXPIRY_WINDOW_DAYS);
-      if (filter === 'expired') return !!item.expiryDate && isExpired(item.expiryDate);
+      if (filter === 'expiring' || filter === 'expired') {
+        return getPantryExpiryStatus(item, leadDays, this.today()) === filter;
+      }
       return item.category === filter;
     }).length;
   }
 
   /** Ionic keeps tab pages alive; re-check the day when the Pantry tab is shown. */
   ionViewWillEnter(): void {
+    this.today.set(new Date());
     this.insights()?.refreshToday();
   }
 

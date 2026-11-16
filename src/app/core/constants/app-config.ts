@@ -1,9 +1,9 @@
 import { PantryCategory } from '../../features/pantry/models/pantry-item.model';
+import { DEFAULT_EXPIRY_LEAD_DAYS } from '../../features/reminders/models/reminder-settings.model';
 import { AppSettings } from '../../features/settings/models/app-settings.model';
 import { DEFAULT_USER_PROFILE } from '../../features/settings/models/profile.model';
 
 export const APP_NAME = 'My Grocery';
-export const DASHBOARD_EXPIRY_WINDOW_DAYS = 7;
 export const EXPIRING_SOON_SECTION_WINDOW_DAYS = 3;
 export const LOW_STOCK_EXPIRY_WINDOW_DAYS = 1;
 
@@ -17,7 +17,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   profile: DEFAULT_USER_PROFILE,
   reminderSettings: {
     expiryRemindersEnabled: true,
-    expiryLeadDays: 3,
+    expiryLeadDays: DEFAULT_EXPIRY_LEAD_DAYS,
     lowStockDigestEnabled: true,
     reminderHour: 9
   }

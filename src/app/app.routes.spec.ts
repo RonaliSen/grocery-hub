@@ -71,4 +71,11 @@ describe('app routes', () => {
 
     expect(TestBed.inject(Router).url).toBe('/tabs/home');
   });
+
+  it('serves the Expiry Tracker page at /tabs/expiry-tracker', async () => {
+    const harness = await RouterTestingHarness.create('/tabs/expiry-tracker');
+
+    expect(TestBed.inject(Router).url).toBe('/tabs/expiry-tracker');
+    expect(harness.routeNativeElement?.querySelector('app-expiry-tracker-page')).not.toBeNull();
+  });
 });

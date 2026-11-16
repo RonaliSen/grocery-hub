@@ -6,6 +6,9 @@ import { FallbackImageDirective } from '../../../shared/directives/fallback-imag
 import { PantryCategory } from '../../pantry/models/pantry-item.model';
 import { PantryImagePipe } from '../../pantry/pipes/pantry-image.pipe';
 import { PantryStateService } from '../../pantry/services/pantry-state.service';
+import { ExpiryAlertComponent } from '../../expiry-tracker/components/expiry-alert.component';
+import { ExpiryShortcutComponent } from '../../expiry-tracker/components/expiry-shortcut.component';
+import { summarizeExpiry, toExpiryEntry } from '../../expiry-tracker/utils/expiry-tracker.util';
 import { SettingsService } from '../../settings/services/settings.service';
 import { ShoppingListStateService } from '../../shopping-list/services/shopping-list-state.service';
 
@@ -91,7 +94,14 @@ const POPULAR_PRODUCTS: readonly FeaturedProduct[] = [
   selector: 'app-home-page',
   standalone: true,
   host: { class: 'theme-citrus' },
-  imports: [FallbackImageDirective, IonContent, PantryImagePipe, RouterLink],
+  imports: [
+    ExpiryAlertComponent,
+    ExpiryShortcutComponent,
+    FallbackImageDirective,
+    IonContent,
+    PantryImagePipe,
+    RouterLink,
+  ],
   template: `
     <ion-content [fullscreen]="true">
       <header class="top-appbar">
@@ -118,6 +128,11 @@ const POPULAR_PRODUCTS: readonly FeaturedProduct[] = [
           <h1 class="greeting">{{ greeting() }}</h1>
           <p class="intro-sub">What's going in your basket today?</p>
         </section>
+
+        <!-- Right after the greeting so it's seen (and read) early; only shown when needed. -->
+        @if (expiryAttentionCount() > 0) {
+          <app-expiry-alert [summary]="expirySummary()" [leadDays]="expiryLeadDays()" />
+        }
 
         <div class="search-wrap" role="search">
           <span class="search-icon material-symbols-outlined" aria-hidden="true">search</span>
@@ -150,6 +165,8 @@ const POPULAR_PRODUCTS: readonly FeaturedProduct[] = [
             <span class="hero-note">Fast add for daily essentials</span>
           </div>
         </section>
+
+        <app-expiry-shortcut [summary]="expirySummary()" />
 
         <section class="categories-section">
           <nav class="category-pills" aria-label="Product categories">
@@ -1029,6 +1046,32 @@ export class HomePage {
   protected readonly profilePhotoDataUrl = computed(
     () => this.settingsService.settings().profile.photoDataUrl ?? null
   );
+
+  /** Re-read on every visit: Ionic keeps Home alive, and "today" moves on. */
+  private readonly today = signal(new Date());
+  protected readonly expiryLeadDays = computed(
+    () => this.settingsService.settings().reminderSettings.expiryLeadDays,
+  );
+
+  /**
+   * Expiry warning and Tracker shortcut: same rules and lead time as the
+   * Expiry Tracker and My Pantry (see expiry-tracker.util / pantry-expiry.util).
+   */
+  protected readonly expirySummary = computed(() => {
+    const leadDays = this.expiryLeadDays();
+    const today = this.today();
+    return summarizeExpiry(
+      this.pantryState.items().map((item) => toExpiryEntry(item, leadDays, today)),
+    );
+  });
+
+  protected readonly expiryAttentionCount = computed(
+    () => this.expirySummary().expired + this.expirySummary().expiring,
+  );
+
+  ionViewWillEnter(): void {
+    this.today.set(new Date());
+  }
 
   protected readonly featuredProducts = computed<readonly FeaturedProduct[]>(
     () => POPULAR_PRODUCTS,

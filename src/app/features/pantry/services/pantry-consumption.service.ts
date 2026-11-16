@@ -59,6 +59,53 @@ export class PantryConsumptionService {
     return this.applyConsumption(itemId, requestedAmount, 'decrement');
   }
 
+  /**
+   * Same as `consume`, but returns the recorded entry (or null when nothing was
+   * used) so the use can be reverted with `undoConsumption`.
+   */
+  consumeUndoable(itemId: string, requestedAmount: number): Promise<PantryConsumptionLog | null> {
+    return this.enqueue(() => this.applyConsumptionNow(itemId, requestedAmount, 'decrement'));
+  }
+
+  /**
+   * Reverts a use (`decrement` / `empty` entry): gives the used amount back to
+   * the item and removes the entry, so totals, trends and Recent Activity read
+   * as if it never happened — rather than recording a separate restock.
+   *
+   * Returns false when there is nothing to revert: the entry is gone (already
+   * undone), isn't a use, or its item has been deleted since.
+   */
+  undoConsumption(logId: string): Promise<boolean> {
+    return this.enqueue(async () => {
+      await this.load();
+
+      const log = this.logsState().find((entry) => entry.id === logId);
+      if (!log || (log.actionType !== 'decrement' && log.actionType !== 'empty')) {
+        return false;
+      }
+
+      const item = this.pantryState.getById(log.itemId);
+      if (!item) {
+        return false;
+      }
+
+      // Add the amount back (rather than resetting to previousQuantity) so any
+      // later change to the item is kept.
+      const restoredQuantity = Math.round((item.quantity + log.amount) * 1_000_000) / 1_000_000;
+      await this.pantryState.setQuantity(item.id, restoredQuantity);
+
+      try {
+        await this.saveLogs(this.logsState().filter((entry) => entry.id !== logId));
+      } catch (error) {
+        // Keep quantity and history consistent: put the quantity back as well.
+        await this.pantryState.setQuantity(item.id, item.quantity);
+        throw error;
+      }
+
+      return true;
+    });
+  }
+
   async markEmpty(itemId: string): Promise<boolean> {
     const item = this.pantryState.getById(itemId);
     return this.applyConsumption(itemId, item?.quantity ?? 0, 'empty');
@@ -109,7 +156,7 @@ export class PantryConsumptionService {
     requestedAmount: number,
     actionType: PantryConsumptionActionType
   ): Promise<boolean> {
-    return this.enqueue(() => this.applyConsumptionNow(itemId, requestedAmount, actionType));
+    return this.enqueue(async () => (await this.applyConsumptionNow(itemId, requestedAmount, actionType)) !== null);
   }
 
   private enqueue<T>(change: () => Promise<T>): Promise<T> {
@@ -123,12 +170,12 @@ export class PantryConsumptionService {
     itemId: string,
     requestedAmount: number,
     actionType: PantryConsumptionActionType
-  ): Promise<boolean> {
+  ): Promise<PantryConsumptionLog | null> {
     await this.load();
 
     const item = this.pantryState.getById(itemId);
     if (!item) {
-      return false;
+      return null;
     }
 
     const previousQuantity = item.quantity;
@@ -143,16 +190,15 @@ export class PantryConsumptionService {
       nextQuantity = Math.max(0, previousQuantity - amount);
 
       if (amount <= 0) {
-        return false;
+        return null;
       }
     }
 
     if (nextQuantity === previousQuantity && actionType !== 'empty') {
-      return false;
+      return null;
     }
 
-    await this.pantryState.setQuantity(itemId, nextQuantity);
-    await this.appendLog({
+    const log: PantryConsumptionLog = {
       id: createId('consumption'),
       itemId,
       actionType,
@@ -162,13 +208,20 @@ export class PantryConsumptionService {
       createdAt: new Date().toISOString(),
       itemName: item.name,
       unit: item.unit
-    });
+    };
 
-    return true;
+    await this.pantryState.setQuantity(itemId, nextQuantity);
+    await this.appendLog(log);
+
+    return log;
   }
 
   private async appendLog(log: PantryConsumptionLog): Promise<void> {
-    const nextLogs = this.sortLogs([log, ...this.logsState()]);
+    await this.saveLogs([log, ...this.logsState()]);
+  }
+
+  private async saveLogs(logs: readonly PantryConsumptionLog[]): Promise<void> {
+    const nextLogs = this.sortLogs(logs);
 
     await this.repository.saveAll(nextLogs);
     this.logsState.set(nextLogs);
