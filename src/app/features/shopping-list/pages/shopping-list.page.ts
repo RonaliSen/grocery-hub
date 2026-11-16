@@ -10,6 +10,7 @@ import { IonContent, IonIcon, ToastController } from '@ionic/angular/standalone'
 import { jsPDF } from 'jspdf';
 import {
   addOutline,
+  arrowForwardOutline,
   calendarOutline,
   cartOutline,
   closeCircleOutline,
@@ -26,6 +27,7 @@ import { formatCurrencyAmount, getCurrencySymbol } from '../../../core/utils/cur
 import { isExpired } from '../../../core/utils/date.utils';
 import { PantryCategory } from '../../pantry/models/pantry-item.model';
 import { PantryStateService } from '../../pantry/services/pantry-state.service';
+import { CATEGORY_EMOJI } from '../../pantry/utils/pantry-category-style.util';
 import { isPantryItemBelowThreshold } from '../../pantry/utils/pantry-stock-status.util';
 import { ExpenseService } from '../../expenses/services/expense.service';
 import { ShoppingListItem } from '../models/shopping-list-item.model';
@@ -46,6 +48,9 @@ type CheckoutLine = {
 
 type ShareMethod = 'whatsapp' | 'clipboard' | 'pdf';
 
+/** Emoji shown in each category pill (decorative; rendered via CSS). */
+const FILTER_EMOJI: Partial<Record<ShoppingCategoryFilter, string>> = { all: '🧺', ...CATEGORY_EMOJI };
+
 type ShareOption = {
   readonly method: ShareMethod;
   readonly title: string;
@@ -55,13 +60,19 @@ type ShareOption = {
 @Component({
   selector: 'app-shopping-list-page',
   standalone: true,
+  host: { class: 'theme-citrus' },
   imports: [IonContent, IonIcon, FormsModule, ShoppingItemRowComponent],
   template: `
     <header class="cart-header">
       <div class="header-top">
+        <span class="header-icon" aria-hidden="true">
+          <ion-icon [icon]="cartIcon" />
+        </span>
         <div class="title-group">
-          <ion-icon aria-hidden="true" [icon]="cartIcon" class="header-icon" />
           <h1 class="header-title">My Cart</h1>
+          <p class="header-subtitle">
+            {{ activeStoreLabel() }} store · {{ filteredActiveItems().length }} to buy
+          </p>
         </div>
 
         <button type="button" class="icon-button" aria-label="Search cart" (click)="focusSearch()">
@@ -70,12 +81,15 @@ type ShareOption = {
       </div>
 
       <div class="search-box">
-        <ion-icon aria-hidden="true" [icon]="searchIcon" class="search-input-icon" />
+        <span class="search-input-icon" aria-hidden="true">
+          <ion-icon [icon]="searchIcon" />
+        </span>
         <input
           #searchInput
           type="search"
           class="search-input"
           placeholder="Filter items..."
+          aria-label="Filter items"
           [value]="searchQuery()"
           (input)="onSearchInput($event)"
         />
@@ -91,46 +105,77 @@ type ShareOption = {
         }
       </div>
 
-      <div class="control-cluster">
-        <nav class="store-tabs" aria-label="Store selector">
-          <button
-            type="button"
-            class="store-tab"
-            [class.is-active]="activeStore() === 'german'"
-            (click)="selectStore('german')"
-          >
-            German
-          </button>
-          <button
-            type="button"
-            class="store-tab"
-            [class.is-active]="activeStore() === 'indian'"
-            (click)="selectStore('indian')"
-          >
-            Indian
-          </button>
-        </nav>
+      <nav class="store-tabs" aria-label="Store selector">
+        <button
+          type="button"
+          class="store-tab"
+          [class.is-active]="activeStore() === 'german'"
+          [attr.aria-pressed]="activeStore() === 'german'"
+          (click)="selectStore('german')"
+        >
+          <span aria-hidden="true">🥨</span> German
+        </button>
+        <button
+          type="button"
+          class="store-tab"
+          [class.is-active]="activeStore() === 'indian'"
+          [attr.aria-pressed]="activeStore() === 'indian'"
+          (click)="selectStore('indian')"
+        >
+          <span aria-hidden="true">🍛</span> Indian
+        </button>
+      </nav>
+    </header>
 
-        <nav class="filter-nav">
+    <ion-content [fullscreen]="true" class="cart-content">
+      <main class="cart-page-shell">
+        @let toBuy = filteredActiveItems().length;
+        @let picked = filteredCompletedItems().length;
+
+        @if (toBuy + picked > 0) {
+          <section class="cart-hero" aria-label="Shopping progress">
+            <div class="hero-dots" aria-hidden="true"></div>
+            <p class="hero-eyebrow">{{ activeStoreLabel() }} store run</p>
+            <h2 class="hero-title">
+              @if (toBuy > 0) {
+                <span class="hero-highlight">{{ toBuy }}</span>
+                {{ toBuy === 1 ? 'item' : 'items' }} left to grab.
+              } @else {
+                All picked up. <span class="hero-highlight">Nice!</span>
+              }
+            </h2>
+            <div
+              class="progress"
+              role="progressbar"
+              aria-label="Items picked"
+              aria-valuemin="0"
+              [attr.aria-valuemax]="toBuy + picked"
+              [attr.aria-valuenow]="picked"
+            >
+              <span [style.width.%]="(picked / (toBuy + picked)) * 100"></span>
+            </div>
+            <p class="progress-label">{{ picked }} of {{ toBuy + picked }} picked</p>
+          </section>
+        }
+
+        <nav class="filter-nav" aria-label="Categories">
           @for (filter of filters; track filter.value) {
             <button
               type="button"
               class="filter-pill"
               [class.is-active]="activeFilter() === filter.value"
+              [attr.aria-pressed]="activeFilter() === filter.value"
+              [attr.data-emoji]="filterEmoji[filter.value]"
               (click)="selectFilter(filter.value)"
             >
               {{ filter.label }}
             </button>
           }
         </nav>
-      </div>
-    </header>
 
-    <ion-content [fullscreen]="true" class="cart-content">
-      <main class="cart-page-shell">
         <section class="list-section">
           <div class="list-section-header">
-            <h2>Current List ({{ currentListQuantityCount() }})</h2>
+            <h2>Current List <span class="list-count">({{ currentListQuantityCount() }})</span></h2>
             <div class="header-actions">
               @if (filteredCompletedItems().length > 0) {
                 <button class="text-action" (click)="clearChecked()">Clear Checked</button>
@@ -141,10 +186,12 @@ type ShareOption = {
           @if (filteredActiveItems().length === 0 && filteredCompletedItems().length === 0) {
             <div class="no-results">
               @if (searchQuery() || activeFilter() !== 'all') {
+                <span class="no-results__emoji" aria-hidden="true">🔍</span>
                 <h2>No items match the current view.</h2>
                 <p>Try a different search or reset filters.</p>
                 <button class="reset-button" (click)="clearFilters()">Reset filters</button>
               } @else {
+                <span class="no-results__emoji" aria-hidden="true">🛒</span>
                 <h2>Your shopping list is empty</h2>
                 <p>Add some items to get started.</p>
               }
@@ -159,6 +206,12 @@ type ShareOption = {
                   (increment)="incrementQuantity($event)"
                   (decrement)="decrementQuantity($event)"
                 />
+              }
+
+              @if (filteredCompletedItems().length > 0) {
+                <p class="group-label">
+                  <span aria-hidden="true">🧺</span> In the basket · {{ filteredCompletedItems().length }}
+                </p>
               }
 
               @for (item of filteredCompletedItems(); track item.id) {
@@ -185,10 +238,15 @@ type ShareOption = {
           }
         </div>
         <div class="sticky-actions">
-          <button type="button" class="checkout-button" (click)="checkout()">Checkout</button>
           <button type="button" class="share-button" (click)="openShareOptions()" aria-label="Share shopping list">
             <ion-icon aria-hidden="true" [icon]="shareIcon" />
             <span>Share</span>
+          </button>
+          <button type="button" class="checkout-button" (click)="checkout()">
+            Checkout
+            <span class="checkout-button__icon" aria-hidden="true">
+              <ion-icon [icon]="arrowIcon" />
+            </span>
           </button>
         </div>
       </div>
@@ -196,118 +254,293 @@ type ShareOption = {
   `,
   styles: [
     `
+      /* Cart — "Citrus & Ink". Tokens (--h-*) come from .theme-citrus
+         (src/theme/citrus.scss), shared with Home and Pantry. */
       :host {
-        --cart-page-bg: var(--app-surface-muted);
-        --cart-surface: #ffffff;
-        --cart-muted: #4a5b55;
-        --cart-border: var(--app-border-strong);
-        --cart-green: #10b981;
-        --cart-green-deep: #006c49;
-        --cart-tabbar-height: calc(86px + env(safe-area-inset-bottom, 0px));
-        --cart-checkout-bar-height: 4rem;
-        --cart-checkout-tab-offset: 0px;
-        --cart-checkout-stack-height: var(--cart-checkout-bar-height);
+        --cart-checkout-bar-height: 4.5rem;
+        --cart-checkout-tab-offset: 10px;
+        --cart-checkout-stack-height: calc(var(--cart-checkout-bar-height) + 28px);
 
         display: flex;
         flex-direction: column;
         height: 100%;
-        background: var(--cart-page-bg);
+        background: var(--h-canvas);
       }
+
+      ion-icon {
+        flex-shrink: 0;
+      }
+
+      /* ---------------- Header ---------------- */
 
       .cart-header {
         position: sticky;
         top: 0;
         z-index: 20;
-        background: var(--app-header-background);
-        backdrop-filter: blur(12px);
-        border-bottom: 1px solid var(--cart-border);
-        padding: calc(env(safe-area-inset-top, 0px) + 1rem) 1rem 0.75rem;
+        display: grid;
+        gap: 12px;
+        padding: calc(env(safe-area-inset-top, 0px) + 14px) var(--h-gutter) 12px;
+        padding-inline: max(var(--h-gutter), calc((100% - 720px) / 2 + var(--h-gutter)));
+        background: color-mix(in srgb, var(--h-canvas) 88%, transparent);
+        backdrop-filter: blur(18px);
+        border-bottom: 1px solid var(--h-line);
       }
 
       .header-top {
         display: flex;
         align-items: center;
-        justify-content: space-between;
-        margin-bottom: 1rem;
-      }
-
-      .icon-button {
-        width: 2.5rem;
-        height: 2.5rem;
-        border: none;
-        border-radius: 999px;
-        background: #e6e9f1;
-        color: var(--cart-green-deep);
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-      }
-
-      .icon-button ion-icon {
-        font-size: 1.4rem;
-      }
-
-      .title-group {
-        display: flex;
-        align-items: center;
-        gap: 0.75rem;
-        flex: 1;
+        gap: 12px;
       }
 
       .header-icon {
-        color: var(--app-primary);
-        font-size: 2rem;
+        width: 44px;
+        height: 44px;
+        border-radius: 14px;
+        display: grid;
+        place-items: center;
+        background: var(--h-accent);
+        color: #ffffff;
+        font-size: 22px;
+        transform: rotate(-6deg);
+        box-shadow: 0 8px 16px -8px var(--h-accent-glow);
+      }
+
+      .title-group {
+        flex: 1;
+        min-width: 0;
       }
 
       .header-title {
         margin: 0;
-        font-family: 'Plus Jakarta Sans', 'Manrope', sans-serif;
-        font-size: clamp(1.55rem, 5.2vw, 2rem);
+        font-size: clamp(1.6rem, 5.6vw, 2.1rem);
         font-weight: 800;
-        letter-spacing: -0.01em;
-        line-height: 1.15;
-        color: #0a8f5b;
+        line-height: 1.05;
+        letter-spacing: -0.035em;
+        color: var(--h-ink);
       }
 
-      .eta-label {
-        margin: 0;
-        color: #9d4300;
-        font-size: 0.95rem;
-        letter-spacing: 0.06em;
+      .header-subtitle {
+        margin: 2px 0 0;
+        font-size: 0.8rem;
         font-weight: 600;
+        color: var(--h-muted);
       }
 
-      .control-cluster {
+      .icon-button {
+        width: 44px;
+        height: 44px;
+        border: 1px solid var(--h-line);
+        border-radius: 50%;
+        background: var(--h-surface);
+        color: var(--h-ink);
         display: grid;
-        gap: 0.625rem;
-        margin-top: 0.75rem;
+        place-items: center;
+        font-size: 20px;
       }
 
+      .search-box {
+        position: relative;
+        display: flex;
+        align-items: center;
+        height: 50px;
+        border-radius: 999px;
+        border: 1px solid var(--h-line);
+        background: var(--h-surface);
+        box-shadow: var(--h-shadow);
+      }
+
+      .search-box:focus-within {
+        border-color: var(--h-accent);
+        box-shadow: 0 0 0 4px var(--h-accent-glow);
+      }
+
+      .search-input-icon {
+        position: absolute;
+        left: 6px;
+        width: 38px;
+        height: 38px;
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        background: var(--h-accent);
+        color: #ffffff;
+        font-size: 18px;
+        pointer-events: none;
+      }
+
+      .search-input {
+        width: 100%;
+        height: 100%;
+        border: none;
+        border-radius: inherit;
+        background: transparent;
+        padding: 0 48px 0 54px;
+        font-size: 0.95rem;
+        font-weight: 600;
+        color: var(--h-ink);
+      }
+
+      .search-input::placeholder {
+        color: var(--h-muted);
+        font-weight: 500;
+      }
+
+      /* Beat the global input:not(…):focus ring (specificity 0,5,1). */
+      :host .search-box input.search-input:focus {
+        box-shadow: none;
+      }
+
+      .search-clear {
+        position: absolute;
+        right: 7px;
+        width: 36px;
+        height: 36px;
+        border: none;
+        border-radius: 50%;
+        background: transparent;
+        color: var(--h-muted);
+        display: grid;
+        place-items: center;
+        font-size: 22px;
+      }
+
+      /* Store switch: segmented control */
       .store-tabs {
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 0.5rem;
+        gap: 4px;
+        padding: 4px;
+        border-radius: 999px;
+        background: var(--h-surface);
+        border: 1px solid var(--h-line);
       }
 
       .store-tab {
-        min-height: 2.25rem;
+        min-height: 40px;
+        border: none;
         border-radius: 999px;
-        border: 1px solid var(--cart-border);
-        background: #f5f7fa;
-        color: var(--cart-muted);
-        font-weight: 700;
+        background: transparent;
+        color: var(--h-ink-soft);
+        font-size: 0.88rem;
+        font-weight: 800;
+        transition: background-color 180ms ease, color 180ms ease;
       }
 
       .store-tab.is-active {
-        background: var(--cart-green-deep);
-        border-color: var(--cart-green-deep);
-        color: #fff;
+        background: var(--h-btn-bg);
+        color: var(--h-btn-fg);
+        box-shadow: 0 6px 14px -8px rgba(22, 20, 29, 0.6);
       }
 
+      /* ---------------- Content ---------------- */
+
+      .cart-content {
+        --padding-bottom: var(--cart-checkout-stack-height);
+      }
+
+      .cart-content::part(background) {
+        background: var(--h-canvas);
+      }
+
+      .cart-page-shell {
+        width: min(100%, 720px);
+        margin: 0 auto;
+        padding: 16px var(--h-gutter) 24px;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        gap: 18px;
+      }
+
+      /* Progress hero */
+      .cart-hero {
+        position: relative;
+        isolation: isolate;
+        overflow: hidden;
+        display: grid;
+        justify-items: start;
+        gap: 12px;
+        padding: 20px 22px 22px;
+        border-radius: 28px;
+        color: #ffffff;
+        background:
+          radial-gradient(70% 90% at 100% 100%, rgba(255, 106, 61, 0.5), transparent 70%),
+          radial-gradient(45% 55% at 0% 0%, rgba(201, 184, 255, 0.22), transparent 70%),
+          var(--h-hero-bg);
+        outline: 1px solid var(--h-hero-border);
+        outline-offset: -1px;
+        box-shadow: 0 24px 40px -24px rgba(22, 20, 29, 0.6);
+      }
+
+      .hero-dots {
+        position: absolute;
+        z-index: -1;
+        inset: 0 0 auto auto;
+        width: 55%;
+        height: 80%;
+        background-image: radial-gradient(rgba(255, 255, 255, 0.16) 1.2px, transparent 1.4px);
+        background-size: 14px 14px;
+        mask-image: linear-gradient(225deg, #000 10%, transparent 70%);
+      }
+
+      .hero-eyebrow {
+        margin: 0;
+        padding: 6px 12px;
+        border-radius: 10px;
+        background: var(--h-lilac);
+        color: #16141d;
+        font-size: 0.68rem;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        transform: rotate(-3deg);
+      }
+
+      .hero-title {
+        margin: 0;
+        font-size: clamp(1.5rem, 5.4vw, 2rem);
+        font-weight: 800;
+        line-height: 1.08;
+        letter-spacing: -0.035em;
+        color: #ffffff;
+      }
+
+      .hero-highlight {
+        color: var(--h-sun);
+      }
+
+      .progress {
+        width: 100%;
+        height: 10px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.14);
+        overflow: hidden;
+      }
+
+      .progress span {
+        display: block;
+        height: 100%;
+        min-width: 10px;
+        border-radius: inherit;
+        background: linear-gradient(90deg, var(--h-sun), var(--h-accent));
+        transition: width 300ms ease;
+      }
+
+      .progress-label {
+        margin: -4px 0 0;
+        font-size: 0.76rem;
+        font-weight: 700;
+        color: rgba(255, 255, 255, 0.72);
+      }
+
+      /* Category pills */
       .filter-nav {
         display: flex;
-        gap: 0.5rem;
+        gap: 8px;
+        margin: -4px calc(var(--h-gutter) * -1);
+        padding: 4px var(--h-gutter);
+        scroll-padding-inline: var(--h-gutter);
         overflow-x: auto;
+        scroll-snap-type: x proximity;
         scrollbar-width: none;
       }
 
@@ -317,544 +550,260 @@ type ShareOption = {
 
       .filter-pill {
         flex-shrink: 0;
-        min-height: 2rem;
-        padding: 0.3rem 0.9rem;
-        border: 1px solid #d2dce6;
+        scroll-snap-align: start;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        min-height: 40px;
+        padding: 0 14px 0 11px;
+        border: 1px solid var(--h-line);
         border-radius: 999px;
-        background: #f8fafc;
-        color: #4c5a54;
-        font-size: 0.825rem;
-        font-weight: 600;
+        background: var(--h-surface);
+        color: var(--h-ink-soft);
+        font-size: 0.82rem;
+        font-weight: 700;
+        transition: background-color 160ms ease, color 160ms ease;
+      }
+
+      .filter-pill::before {
+        content: attr(data-emoji);
+        content: attr(data-emoji) / '';
+        font-size: 1rem;
       }
 
       .filter-pill.is-active {
-        border-color: var(--cart-green-deep);
-        background: #dbf8ea;
-        color: var(--cart-green-deep);
+        background: var(--h-btn-bg);
+        border-color: var(--h-btn-bg);
+        color: var(--h-btn-fg);
       }
 
-      .search-box {
-        margin-top: 0.75rem;
-        position: relative;
-      }
-
-      .search-input-icon {
-        position: absolute;
-        left: 0.75rem;
-        top: 50%;
-        transform: translateY(-50%);
-        color: #6f7f75;
-        font-size: 1.2rem;
-      }
-
-      .search-input {
-        width: 100%;
-        height: 2.8rem;
-        border: 1px solid var(--cart-border);
-        border-radius: 999px;
-        background: #ffffff;
-        color: #0c1b2d;
-        padding: 0 2.75rem 0 2.45rem;
-        font-size: 0.95rem;
-      }
-
-      .search-clear {
-        border: none;
-        background: transparent;
-        color: #809087;
-        width: 2rem;
-        height: 2rem;
-        border-radius: 999px;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        position: absolute;
-        right: 0.4rem;
-        top: 50%;
-        transform: translateY(-50%);
-      }
-
-      .cart-content {
-        --background: var(--app-surface-muted);
-        --padding-bottom: var(--cart-checkout-stack-height);
-      }
-
-      .cart-page-shell {
-        width: min(100%, 720px);
-        margin: 0 auto;
-        padding: 1rem 1rem var(--cart-checkout-stack-height);
-        display: grid;
-        gap: 1rem;
-      }
-
+      /* List */
       .list-section-header {
         display: flex;
+        align-items: baseline;
         justify-content: space-between;
-        gap: 0.75rem;
-        align-items: center;
-        margin-bottom: 0.75rem;
+        gap: 12px;
+        margin-bottom: 12px;
       }
 
       .list-section-header h2 {
         margin: 0;
-        color: #0c1b2d;
-        font-size: 0.85rem;
-        text-transform: uppercase;
-        letter-spacing: 0.06em;
+        font-size: 1.4rem;
+        font-weight: 800;
+        letter-spacing: -0.03em;
+        color: var(--h-ink);
       }
 
-      .header-actions {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.6rem;
+      .list-count {
+        font-size: 1rem;
+        color: var(--h-muted);
       }
 
       .text-action {
-        border: none;
-        background: transparent;
-        color: #60726a;
-        font-size: 0.8rem;
-        font-weight: 700;
+        min-height: 34px;
+        padding: 0 14px;
+        border: 1px solid var(--h-line);
+        border-radius: 999px;
+        background: var(--h-surface);
+        color: var(--h-danger);
+        font-size: 0.78rem;
+        font-weight: 800;
       }
 
       .item-stack {
         display: grid;
-        gap: 0.75rem;
+        gap: 10px;
       }
 
+      .group-label {
+        margin: 10px 0 0;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 0.74rem;
+        font-weight: 800;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--h-muted);
+      }
+
+      .group-label::after {
+        content: '';
+        flex: 1;
+        height: 1px;
+        background: var(--h-line);
+      }
+
+      /* Empty / no results */
       .no-results {
-        border: 1px solid var(--cart-border);
-        border-radius: 1rem;
-        background: var(--cart-surface);
-        padding: 1.4rem;
+        display: grid;
+        justify-items: center;
+        gap: 8px;
+        padding: 32px 20px;
+        border-radius: 28px;
+        background: var(--h-surface);
+        border: 2px dashed var(--h-line);
         text-align: center;
       }
 
+      .no-results__emoji {
+        width: 64px;
+        height: 64px;
+        margin-bottom: 6px;
+        border-radius: 22px;
+        display: grid;
+        place-items: center;
+        font-size: 2rem;
+        background: var(--h-tile-1);
+        transform: rotate(-6deg);
+      }
+
       .no-results h2 {
-        margin: 0 0 0.4rem;
-        font-size: 1.2rem;
+        margin: 0;
+        font-size: 1.25rem;
+        font-weight: 800;
+        letter-spacing: -0.02em;
+        color: var(--h-ink);
       }
 
       .no-results p {
         margin: 0;
-        color: #5b6963;
+        font-size: 0.9rem;
+        color: var(--h-ink-soft);
       }
 
       .reset-button {
-        margin-top: 1rem;
+        margin-top: 10px;
+        min-height: 46px;
+        padding: 0 20px;
         border: none;
         border-radius: 999px;
-        background: var(--cart-green-deep);
-        color: white;
-        font-weight: 700;
-        padding: 0.55rem 1rem;
+        background: var(--h-btn-bg);
+        color: var(--h-btn-fg);
+        font-size: 0.9rem;
+        font-weight: 800;
       }
+
+      /* ---------------- Floating checkout bar ---------------- */
 
       .sticky-checkout-bar {
         position: fixed;
         left: 50%;
-        transform: translateX(-50%);
-        width: min(720px, calc(100% - 1rem));
         bottom: var(--cart-checkout-tab-offset);
         z-index: 25;
+        transform: translateX(-50%);
+        width: min(696px, calc(100% - 2 * var(--h-gutter)));
         height: var(--cart-checkout-bar-height);
-        border-top-left-radius: 18px;
-        border-top-right-radius: 18px;
-        background: var(--cart-green-deep);
-        color: #fff;
-        padding: 0.5rem 0.9rem;
+        padding: 0 8px 0 20px;
         display: flex;
         align-items: center;
         justify-content: space-between;
-        gap: 0.75rem;
-        box-shadow: 0 -8px 22px rgba(11, 59, 41, 0.2);
+        gap: 10px;
+        border-radius: 999px;
+        color: #ffffff;
+        background: var(--h-hero-bg);
+        outline: 1px solid var(--h-hero-border);
+        outline-offset: -1px;
+        box-shadow: 0 18px 36px -14px rgba(22, 20, 29, 0.7);
       }
 
       .total-block {
         display: grid;
-        gap: 0.1rem;
-      }
-
-      .total-label {
-        font-size: 0.75rem;
-        opacity: 0.8;
-        letter-spacing: 0.08em;
-      }
-
-      .total-block strong {
-        font-size: clamp(1.2rem, 4.8vw, 1.45rem);
         line-height: 1.1;
       }
 
-      .total-subtext {
-        font-size: 0.75rem;
-        opacity: 0.9;
+      .total-label {
+        font-size: 0.66rem;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: rgba(255, 255, 255, 0.6);
       }
 
-      .checkout-button {
-        border: none;
-        min-width: clamp(7.25rem, 34vw, 9.5rem);
-        border-radius: 999px;
-        background: #fff;
-        color: var(--cart-green-deep);
-        min-height: 2.35rem;
-        padding: 0.4rem 1rem;
+      .total-block strong {
+        font-family: var(--h-display);
+        font-size: 1.5rem;
         font-weight: 800;
+        color: var(--h-sun);
+      }
+
+      .total-subtext {
+        font-size: 0.72rem;
+        color: rgba(255, 255, 255, 0.75);
       }
 
       .sticky-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .share-button,
+      .checkout-button {
+        min-height: 52px;
+        border-radius: 999px;
         display: inline-flex;
         align-items: center;
-        gap: 0.55rem;
+        gap: 8px;
+        font-size: 0.9rem;
+        font-weight: 800;
+        transition: transform 140ms ease;
+      }
+
+      .share-button:active,
+      .checkout-button:active {
+        transform: scale(0.96);
       }
 
       .share-button {
-        min-height: 2.35rem;
-        padding: 0.4rem 0.9rem;
-        border-radius: 999px;
-        border: 1px solid rgba(255, 255, 255, 0.3);
-        background: linear-gradient(135deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.08));
-        color: #fff;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        gap: 0.4rem;
-        font-weight: 800;
+        padding: 0 16px;
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        background: rgba(255, 255, 255, 0.08);
+        color: #ffffff;
       }
 
       .share-button ion-icon {
-        font-size: 1.05rem;
+        font-size: 18px;
       }
 
-      .checkout-modal {
-        height: 100%;
-        display: flex;
-        flex-direction: column;
-        gap: 0.75rem;
-        padding: 0.75rem 0.9rem calc(1.1rem + env(safe-area-inset-bottom, 0px));
-        background: linear-gradient(180deg, #f7fbf8 0%, #eef5f0 100%);
+      .checkout-button {
+        padding: 0 6px 0 20px;
+        border: none;
+        background: var(--h-accent);
+        color: #ffffff;
+        box-shadow: 0 10px 20px -10px var(--h-accent-glow);
       }
 
-      .sheet-handle {
-        width: 4.25rem;
-        height: 0.35rem;
-        border-radius: 999px;
-        margin: 0.25rem auto 0;
-        background: #9ecab4;
-      }
-
-      .checkout-header {
-        padding: 0 0.9rem;
-        background: #fff;
-        border-radius: 16px;
-        box-shadow: 0 8px 24px rgba(7, 61, 39, 0.06);
-      }
-
-      .checkout-header h2 {
-        margin: 0.95rem 0 0;
-        color: #0f2b1d;
-        font-size: 1.55rem;
-        font-weight: 800;
-        letter-spacing: -0.02em;
-      }
-
-      .checkout-header p {
-        margin: 0.35rem 0 0.95rem;
-        color: #4f6558;
-        font-size: 0.95rem;
-      }
-
-      .checkout-section-title {
-        margin: 0;
-        padding: 0 0.2rem;
-        color: #113426;
-        font-size: 1.3rem;
-        font-weight: 800;
-        letter-spacing: -0.01em;
-      }
-
-      .checkout-body {
-        flex: 1 1 auto;
-        min-height: 0;
-        display: grid;
-        grid-template-rows: auto minmax(0, 1fr) auto;
-        gap: 0.75rem;
-        overflow: hidden;
-      }
-
-      .checkout-list-container {
-        min-height: 0;
-        overflow: auto;
-        overscroll-behavior: contain;
-        -webkit-overflow-scrolling: touch;
-        padding-right: 0.1rem;
-        scrollbar-gutter: stable;
-        scrollbar-width: thin;
-        scrollbar-color: rgba(18, 113, 70, 0.55) rgba(215, 228, 220, 0.8);
-      }
-
-      .checkout-list-container::-webkit-scrollbar {
-        width: 0.55rem;
-      }
-
-      .checkout-list-container::-webkit-scrollbar-track {
-        background: rgba(215, 228, 220, 0.8);
-        border-radius: 999px;
-      }
-
-      .checkout-list-container::-webkit-scrollbar-thumb {
-        background: rgba(18, 113, 70, 0.55);
-        border-radius: 999px;
-        border: 2px solid rgba(215, 228, 220, 0.8);
-      }
-
-      .checkout-list {
-        overflow: visible;
-        min-height: 0;
-        padding: 0;
-        display: grid;
-        gap: 0.7rem;
-      }
-
-      .checkout-item {
-        display: grid;
-        grid-template-columns: 3rem minmax(0, 1fr) auto;
-        gap: 0.75rem;
-        align-items: center;
-        background: #fff;
-        border: 1px solid #dbe7df;
-        border-radius: 14px;
-        padding: 0.82rem;
-      }
-
-      .checkout-item img,
-      .item-image-fallback {
-        width: 3rem;
-        height: 3rem;
-        border-radius: 10px;
-      }
-
-      .checkout-item img {
-        object-fit: cover;
-      }
-
-      .item-image-fallback {
+      .checkout-button__icon {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
         display: grid;
         place-items: center;
-        background: #daf4e6;
-        color: #0c7c4d;
-        font-weight: 800;
+        background: #ffffff;
+        color: var(--h-accent);
+        font-size: 18px;
       }
 
-      .item-main h3 {
-        margin: 0;
-        font-size: 1.08rem;
-        font-weight: 750;
-        color: #122d21;
-      }
-
-      .custom-name-input {
-        --padding-top: 0;
-        --padding-bottom: 0;
-        --padding-start: 0;
-        --padding-end: 0;
-        --background: transparent;
-        --border-radius: 0;
-        margin: 0;
-        min-height: 0;
-        color: #122d21;
-        font-size: 1.03rem;
-        font-weight: 750;
-      }
-
-      .item-main p {
-        margin: 0.2rem 0 0;
-        color: #60766a;
-        font-size: 0.95rem;
-      }
-
-      .price-field {
-        display: flex;
-        align-items: center;
-        gap: 0.35rem;
-      }
-
-      .item-actions {
-        display: flex;
-        align-items: center;
-        justify-content: flex-end;
-        gap: 0.6rem;
-        flex-wrap: nowrap;
-      }
-
-      .price-field span {
-        font-weight: 700;
-        color: #27533d;
-      }
-
-      .price-field ion-input,
-      .price-field input,
-      .checkout-store input {
-        min-height: 3rem;
-        border: 1px solid #d3dfd8;
-        border-radius: 12px;
-        padding: 0 0.6rem;
-        font-size: 1.12rem;
-        background: #fff;
-      }
-
-      .price-field ion-input {
-        width: 5.25rem;
-      }
-
-      .price-field ion-input {
-        text-align: center;
-      }
-
-      .price-field ion-input::part(native) {
-        text-align: center;
-      }
-
-      .delete-line-button {
-        border: 1px solid #d8e5dd;
-        background: #f6faf7;
-        color: #a24b42;
-        width: 2.5rem;
-        height: 2.5rem;
-        border-radius: 999px;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-      }
-
-      .delete-line-button ion-icon {
-        font-size: 1.1rem;
-      }
-
-      .add-custom-item {
-        width: 100%;
-        height: 3.1rem;
-        min-height: 3.1rem;
-        border-radius: 12px;
-        border: 1px dashed #c5d8cc;
-        background: #f7fbf8;
-        color: #127146;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        gap: 0.4rem;
-        font-size: 1.05rem;
-        font-weight: 700;
-        white-space: nowrap;
-        flex: 0 0 auto;
-      }
-
-      .checkout-summary {
-        flex: 0 0 auto;
-        background: linear-gradient(135deg, #f1f7f3 0%, #e3efe8 100%);
-        border: 1px solid #d2e3d8;
-        color: #183026;
-        padding: 0.85rem 0.85rem calc(1rem + env(safe-area-inset-bottom, 0px));
-        border-radius: 16px;
-        box-shadow: 0 -8px 24px rgba(7, 61, 39, 0.06);
-      }
-
-      .summary-grid {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 0.5rem;
-        margin-bottom: 0.55rem;
-      }
-
-      .summary-grid p {
-        margin: 0;
-        display: grid;
-        gap: 0.2rem;
-        font-size: 0.86rem;
-        color: #496456;
-      }
-
-      .summary-grid strong {
-        font-size: 1.45rem;
-        line-height: 1.05;
-        color: #113a2b;
-      }
-
-      .summary-date {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.4rem;
-        margin-bottom: 0.85rem;
-      }
-
-      .summary-date ion-icon {
-        color: #2f4f40;
-      }
-
-      .summary-date p {
-        margin: 0;
-        color: #2f4f40;
-        font-size: 0.95rem;
-      }
-
-      .summary-actions {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 0.6rem;
-        padding-bottom: 0.1rem;
-      }
-
-      .summary-actions button {
-        min-height: 3rem;
-        border-radius: 999px;
-        font-weight: 800;
-        font-size: 1rem;
-      }
-
-      .cancel-btn {
-        border: 1px solid #16784b;
-        background: #f7fcf8;
-        color: #11693f;
-      }
-
-      .confirm-btn {
-        border: none;
-        color: #fff;
-        background: linear-gradient(135deg, #229260 0%, #0b6d43 100%);
-      }
-
-      .confirm-btn:disabled {
-        opacity: 0.6;
-      }
-
-      @media (max-width: 360px) {
-        .sticky-checkout-bar {
-          padding-left: 0.75rem;
-          padding-right: 0.75rem;
-        }
-
-        .sticky-actions {
-          gap: 0.4rem;
-        }
-
-        .total-label,
-        .total-subtext {
-          font-size: 0.7rem;
-        }
-
+      @media (max-width: 374px) {
         .share-button span {
           display: none;
         }
 
         .share-button {
-          padding-left: 0.75rem;
-          padding-right: 0.75rem;
+          padding: 0 15px;
+        }
+
+        .checkout-button {
+          padding-left: 16px;
         }
       }
 
-      @media (min-width: 768px) {
-        .sticky-checkout-bar {
-          width: min(720px, calc(100% - 2rem));
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          transition: none !important;
         }
       }
     `,
@@ -878,6 +827,8 @@ export class ShoppingListPage {
   protected readonly calendarIcon = calendarOutline;
   protected readonly deleteIcon = trashOutline;
   protected readonly shareIcon = shareOutline;
+  protected readonly arrowIcon = arrowForwardOutline;
+  protected readonly filterEmoji = FILTER_EMOJI;
   protected readonly categoryLabels = CATEGORY_LABELS;
   protected readonly shareOptions: readonly ShareOption[] = [
     {

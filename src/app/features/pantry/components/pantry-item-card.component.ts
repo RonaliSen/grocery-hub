@@ -10,6 +10,7 @@ import { QuantityLabelPipe } from '../../../shared/pipes/quantity-label.pipe';
 import { SettingsService } from '../../settings/services/settings.service';
 import { PantryItem } from '../models/pantry-item.model';
 import { PantryImagePipe } from '../pipes/pantry-image.pipe';
+import { categoryTileColor } from '../utils/pantry-category-style.util';
 import { getPantryStockStatus } from '../utils/pantry-stock-status.util';
 
 @Component({
@@ -17,7 +18,12 @@ import { getPantryStockStatus } from '../utils/pantry-stock-status.util';
   standalone: true,
   imports: [ExpiryStatusPipe, FallbackImageDirective, IonIcon, PantryImagePipe, QuantityLabelPipe, RouterLink],
   template: `
-    <div class="item-card" [routerLink]="['/tabs/pantry', item().id, 'edit']">
+    <div
+      class="item-card"
+      [class.is-out]="stockTone() === 'danger'"
+      [style.--tile]="tileColor()"
+      [routerLink]="['/tabs/pantry', item().id, 'edit']"
+    >
       <div class="item-visual">
         <img
           [src]="item() | pantryImage"
@@ -26,50 +32,51 @@ import { getPantryStockStatus } from '../utils/pantry-stock-status.util';
           class="item-image"
           loading="lazy"
         />
+        <span class="category">{{ categoryLabels[item().category] }}</span>
+        <button
+          type="button"
+          class="delete-button"
+          aria-label="Delete pantry item"
+          (click)="onDelete($event)"
+        >
+          <ion-icon aria-hidden="true" [icon]="trashIcon" />
+        </button>
       </div>
 
       <div class="item-info">
-        <div class="item-row item-row--top">
-          <span class="category">{{ categoryLabels[item().category] }}</span>
-          <div class="top-actions">
-            <p class="expiry-date" [class.is-expired]="expiryTone() === 'danger'" [class.is-expiring]="expiryTone() === 'warning'">
-              {{ item().expiryDate ? (item().expiryDate | expiryStatus) : 'No expiry date' }}
-            </p>
-            <button
-              type="button"
-              class="delete-button"
-              aria-label="Delete pantry item"
-              (click)="onDelete($event)"
-            >
-              <ion-icon aria-hidden="true" [icon]="trashIcon" />
-            </button>
-          </div>
-        </div>
-
         <h3 class="item-name">{{ item().name }}</h3>
         <p class="quantity-line">{{ item().quantity | quantityLabel: item().unit }}</p>
 
-        <div class="item-row item-row--bottom">
-          <div class="stock-pill" [class]="'stock-pill stock--' + stockLabel().toLowerCase().replace(' ', '-')">
+        <div class="chips">
+          <span class="stock-pill" [class]="'stock-pill stock--' + stockTone()">
             {{ stockLabel() }}
-          </div>
+          </span>
+          <p
+            class="expiry-date"
+            [class.is-expired]="expiryTone() === 'danger'"
+            [class.is-expiring]="expiryTone() === 'warning'"
+          >
+            {{ item().expiryDate ? (item().expiryDate | expiryStatus) : 'No expiry date' }}
+          </p>
         </div>
       </div>
     </div>
   `,
   styles: [
     `
+      /* Tokens (--h-*) are inherited from the Pantry page's .theme-citrus host. */
+      :host {
+        display: block;
+      }
+
       .item-card {
         display: flex;
-        align-items: stretch;
-        gap: 1rem;
-        padding: 0.78rem;
-        background: var(--app-surface);
-        border-radius: 1.2rem;
-        border: 1px solid color-mix(in srgb, var(--app-border) 78%, #dce2db);
-        box-shadow: 0 1px 0 color-mix(in srgb, #ffffff 50%, transparent);
-        transition: transform 0.1s;
+        flex-direction: column;
+        padding: 8px;
+        border-radius: 26px;
+        background: var(--tile, var(--h-surface));
         cursor: pointer;
+        transition: transform 180ms ease, box-shadow 180ms ease;
       }
 
       .item-card:active {
@@ -77,143 +84,155 @@ import { getPantryStockStatus } from '../utils/pantry-stock-status.util';
       }
 
       .item-visual {
-        flex-shrink: 0;
-        width: 4.8rem;
-        height: 4.8rem;
-        border-radius: 0.85rem;
+        position: relative;
+        aspect-ratio: 1 / 1;
+        border-radius: 20px;
         overflow: hidden;
-        background: var(--app-surface-container, var(--app-surface-muted));
-        display: flex;
-        align-items: center;
-        justify-content: center;
+        background: rgba(255, 255, 255, 0.5);
       }
 
       .item-image {
+        display: block;
         width: 100%;
         height: 100%;
         object-fit: cover;
+        color: transparent;
+        transition: transform 400ms ease, filter 200ms ease;
       }
 
-      .item-info {
-        flex: 1;
-        min-width: 0;
-        display: grid;
-        gap: 0.12rem;
+      .is-out .item-image {
+        filter: grayscale(0.85);
+        opacity: 0.7;
       }
 
-      .item-row {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-      }
-
-      .item-row--top {
-        margin-top: 0.05rem;
-      }
-
-      .top-actions {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.4rem;
-      }
-
-      .item-name {
-        margin: 0.1rem 0 0;
-        font-size: 1.04rem;
-        line-height: 1.1;
-        font-weight: 700;
-        color: var(--app-ink);
+      .category {
+        position: absolute;
+        top: 12px;
+        left: 8px;
+        max-width: calc(100% - 58px);
+        padding: 4px 9px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.92);
+        color: #16141d;
+        font-size: 0.62rem;
+        font-weight: 800;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
       }
 
-      @media (max-width: 520px) {
-        .item-name {
-          font-size: 1rem;
-        }
+      .delete-button {
+        position: absolute;
+        top: 8px;
+        right: 8px;
+        width: 34px;
+        height: 34px;
+        padding: 0;
+        border: none;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.92);
+        color: var(--h-danger);
+        display: grid;
+        place-items: center;
+        font-size: 17px;
+        box-shadow: 0 4px 10px -4px rgba(0, 0, 0, 0.3);
       }
 
-      .expiry-date {
+      .item-info {
+        display: grid;
+        gap: 2px;
+        padding: 12px 6px 6px;
+        min-width: 0;
+      }
+
+      .item-name {
         margin: 0;
-        font-size: 0.82rem;
-        color: color-mix(in srgb, var(--app-text-muted) 80%, #4b515f);
+        font-size: 1rem;
+        font-weight: 800;
+        line-height: 1.2;
+        letter-spacing: -0.02em;
+        color: var(--h-ink);
         white-space: nowrap;
-        padding: 0.1rem 0.35rem;
-        border-radius: 999px;
-      }
-
-      .expiry-date.is-expired {
-        color: #b3281d;
-        background: #f9d7d2;
-        font-weight: 700;
-      }
-
-      .expiry-date.is-expiring {
-        color: #713717;
-        background: #f6dcc9;
-        font-weight: 700;
+        overflow: hidden;
+        text-overflow: ellipsis;
       }
 
       .quantity-line {
-        margin: 0.1rem 0 0;
-        font-size: 0.88rem;
-        font-weight: 500;
-        color: #24342f;
-      }
-
-      .category {
         margin: 0;
-        font-size: 0.82rem;
-        color: #006c49;
-        text-transform: uppercase;
-        letter-spacing: 0.01em;
+        font-family: var(--h-display);
+        font-size: 0.92rem;
         font-weight: 700;
+        color: var(--h-ink-soft);
       }
 
-      .item-row--bottom {
-        justify-content: flex-start;
-        margin-top: 0.4rem;
+      .chips {
+        margin-top: 8px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+
+      .stock-pill,
+      .expiry-date {
+        margin: 0;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        min-height: 24px;
+        padding: 0 9px;
+        border-radius: 999px;
+        font-size: 0.7rem;
+        font-weight: 700;
+        white-space: nowrap;
       }
 
       .stock-pill {
-        display: inline-flex;
-        align-items: center;
-        height: 1.65rem;
-        padding: 0 0.68rem;
-        border-radius: 0.7rem;
-        background: #d5e0f4;
-        color: #11233b;
-        font-size: 0.8rem;
-        font-weight: 600;
+        background: var(--h-surface);
+        color: var(--h-ink);
       }
 
-      .stock--in-stock {
-        color: #005a3b;
+      .stock-pill::before {
+        content: '';
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--dot, var(--h-ok));
       }
 
-      .stock--low-stock {
-        color: #915415;
+      .stock--warning { --dot: var(--h-warn); }
+      .stock--danger { --dot: var(--h-danger); }
+
+      .expiry-date {
+        color: var(--h-ink-soft);
+        background: color-mix(in srgb, var(--h-surface) 55%, transparent);
       }
 
-      .stock--out-of-stock, .stock--expired {
-        color: #9f2222;
+      .expiry-date.is-expiring {
+        background: var(--h-warn-surface);
+        color: var(--h-warn);
       }
 
-      .delete-button {
-        width: 1.8rem;
-        height: 1.8rem;
-        border: 1px solid color-mix(in srgb, var(--ion-color-danger) 24%, #ffffff);
-        border-radius: 999px;
-        background: color-mix(in srgb, var(--ion-color-danger) 9%, #ffffff);
-        color: var(--ion-color-danger);
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
+      .expiry-date.is-expired {
+        background: var(--h-danger-surface);
+        color: var(--h-danger);
       }
 
-      .delete-button ion-icon {
-        font-size: 1rem;
+      :host-context([data-theme='light']) .expiry-date.is-expiring,
+      :host-context([data-theme='system']) .expiry-date.is-expiring {
+        color: #9a5200;
+      }
+
+      @media (hover: hover) {
+        .item-card:hover {
+          transform: translateY(-3px);
+          box-shadow: 0 18px 30px -18px rgba(22, 20, 29, 0.45);
+        }
+
+        .item-card:hover .item-image {
+          transform: scale(1.05);
+        }
       }
     `
   ],
@@ -226,6 +245,10 @@ export class PantryItemCardComponent {
   readonly addToShopping = output<PantryItem>();
   protected readonly trashIcon = trashOutline;
   protected readonly categoryLabels = CATEGORY_LABELS;
+
+  protected tileColor(): string {
+    return categoryTileColor(this.item().category);
+  }
 
   protected onDelete(event: Event): void {
     event.preventDefault();

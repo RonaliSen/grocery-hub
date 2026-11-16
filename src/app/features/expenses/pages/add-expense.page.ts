@@ -13,37 +13,145 @@ import {
 import { CATEGORY_LABELS } from '../../../core/constants/app-config';
 import { NavigationHistoryService } from '../../../core/services/navigation-history.service';
 import { getCurrencySymbol } from '../../../core/utils/currency.utils';
+import { CATEGORY_EMOJI, categoryTileColor } from '../../pantry/utils/pantry-category-style.util';
 import { EXPENSE_CATEGORIES, ExpenseCategory } from '../models/expense.model';
 import { ExpenseService } from '../services/expense.service';
 
 @Component({
   selector: 'app-add-expense-page',
   standalone: true,
+  host: { class: 'theme-citrus' },
   imports: [FormsModule, IonContent, IonIcon],
   template: `
-    <header class="form-header app-mobile-header app-mobile-header--center">
-      <button type="button" class="icon-btn app-mobile-icon-btn plain" (click)="goBack()" aria-label="Back">
+    <header class="form-header">
+      <button type="button" class="icon-btn" (click)="goBack()" aria-label="Back">
         <ion-icon [icon]="backIcon" aria-hidden="true" />
       </button>
-      <h1>Add Expense</h1>
-      <button type="button" class="icon-btn app-mobile-icon-btn success" (click)="saveExpense()" aria-label="Save expense">
+      <div class="header-text">
+        <h1>Add Expense</h1>
+        <p>Log a grocery purchase</p>
+      </div>
+      <button type="button" class="icon-btn icon-btn--accent" (click)="saveExpense()" aria-label="Save expense">
         <ion-icon [icon]="checkIcon" aria-hidden="true" />
       </button>
     </header>
 
     <ion-content [fullscreen]="true" class="add-content">
-      <main class="form-shell app-mobile-shell">
-        <section class="form-card app-mobile-card">
-          <label class="field-wrap"><span>Title <em>*</em></span><input type="text" placeholder="e.g. Milk, Onions, Rice" [(ngModel)]="title" /></label>
-          <label class="field-wrap"><span>Amount <em>*</em></span><div class="amount-wrap"><span>{{ currencySymbol }}</span><input type="number" min="0.01" step="0.01" placeholder="0.00" [(ngModel)]="amount" /></div></label>
-          <label class="field-wrap"><span>Quantity <em>*</em></span><input type="number" min="1" step="1" placeholder="1" [(ngModel)]="quantity" /></label>
-          <label class="field-wrap"><span>Discount <small>(optional)</small></span><div class="amount-wrap"><span>{{ currencySymbol }}</span><input type="number" min="0" step="0.01" placeholder="0.00" [(ngModel)]="discount" /></div></label>
-          <label class="field-wrap"><span>Total Amount</span><div class="amount-wrap readonly"><span>{{ currencySymbol }}</span><input type="number" [value]="totalAmount" readonly /></div></label>
-          <label class="field-wrap"><span>Category <em>*</em></span><div class="select-wrap"><select [(ngModel)]="category">@for (item of categories; track item) {<option [value]="item">{{ categoryLabels[item] }}</option>}</select><ion-icon [icon]="downIcon" aria-hidden="true" /></div></label>
-          <label class="field-wrap"><span>Store <small>(optional)</small></span><input type="text" placeholder="e.g. Lidl, Aldi" [(ngModel)]="store" /></label>
-          <label class="field-wrap"><span>Date <em>*</em></span><div class="date-wrap"><input type="date" [(ngModel)]="date" /><ion-icon [icon]="calendarIcon" aria-hidden="true" /></div></label>
-          <label class="field-wrap"><span>Notes <small>(optional)</small></span><textarea rows="4" placeholder="Add a note..." [(ngModel)]="notes"></textarea></label>
-          <label class="field-wrap"><span>Attachment <small>(optional)</small></span><input type="url" placeholder="Paste receipt image URL" [(ngModel)]="receiptImageUrl" /></label>
+      <main class="form-shell">
+        <!-- Live total -->
+        <section class="total-card" aria-label="Expense preview">
+          <div class="hero-dots" aria-hidden="true"></div>
+          <span class="total-emoji" [style.--tile]="tileColor(category)" aria-hidden="true">{{ categoryEmoji(category) }}</span>
+          <div class="total-info">
+            <p class="total-eyebrow">{{ categoryLabels[category] }}</p>
+            <p class="total-title">{{ title.trim() || 'New expense' }}</p>
+            <p class="total-label">Total Amount</p>
+            <p class="total-value">{{ currencySymbol }}{{ totalAmount }}</p>
+            <p class="total-breakdown">
+              {{ currencySymbol }}{{ amount || '0.00' }} × {{ quantity || '1' }}
+              @if (+discount > 0) { − {{ currencySymbol }}{{ discount }} discount }
+            </p>
+          </div>
+        </section>
+
+        <!-- What -->
+        <section class="form-card">
+          <header class="card-head">
+            <span class="card-icon" aria-hidden="true">🛒</span>
+            <div>
+              <h2>What did you buy?</h2>
+              <p>Name, price, quantity and any discount.</p>
+            </div>
+          </header>
+
+          <label class="field-wrap">
+            <span class="field-label">Title <em>*</em></span>
+            <input class="text-input" type="text" placeholder="e.g. Milk, Onions, Rice" [(ngModel)]="title" />
+          </label>
+
+          <label class="field-wrap">
+            <span class="field-label">Amount <em>*</em></span>
+            <span class="amount-wrap amount-wrap--big">
+              <span>{{ currencySymbol }}</span>
+              <input type="number" min="0.01" step="0.01" inputmode="decimal" placeholder="0.00" [(ngModel)]="amount" />
+            </span>
+          </label>
+
+          <div class="field-row">
+            <label class="field-wrap">
+              <span class="field-label">Quantity <em>*</em></span>
+              <span class="amount-wrap">
+                <span aria-hidden="true">×</span>
+                <input type="number" min="1" step="1" inputmode="numeric" placeholder="1" [(ngModel)]="quantity" />
+              </span>
+            </label>
+            <label class="field-wrap">
+              <span class="field-label">Discount <small>(optional)</small></span>
+              <span class="amount-wrap">
+                <span>{{ currencySymbol }}</span>
+                <input type="number" min="0" step="0.01" inputmode="decimal" placeholder="0.00" [(ngModel)]="discount" />
+              </span>
+            </label>
+          </div>
+        </section>
+
+        <!-- Category -->
+        <section class="form-card">
+          <header class="card-head">
+            <span class="card-icon" aria-hidden="true">🏷️</span>
+            <div>
+              <h2>Category</h2>
+              <p>Used for your spending breakdown.</p>
+            </div>
+          </header>
+
+          <fieldset class="field-wrap">
+            <legend class="visually-hidden">Category</legend>
+            <div class="category-grid">
+              @for (item of categories; track item) {
+                <label class="category-chip" [class.is-selected]="category === item" [style.--tile]="tileColor(item)">
+                  <input type="radio" class="visually-hidden" name="expense-category" [value]="item" [(ngModel)]="category" />
+                  <span class="category-chip__emoji" aria-hidden="true">{{ categoryEmoji(item) }}</span>
+                  {{ categoryLabels[item] }}
+                </label>
+              }
+            </div>
+          </fieldset>
+        </section>
+
+        <!-- Details -->
+        <section class="form-card">
+          <header class="card-head">
+            <span class="card-icon" aria-hidden="true">📝</span>
+            <div>
+              <h2>Details</h2>
+              <p>Where, when and anything to remember.</p>
+            </div>
+          </header>
+
+          <div class="field-row">
+            <label class="field-wrap">
+              <span class="field-label">Store <small>(optional)</small></span>
+              <input class="text-input" type="text" placeholder="e.g. Lidl, Aldi" [(ngModel)]="store" />
+            </label>
+            <label class="field-wrap">
+              <span class="field-label">Date <em>*</em></span>
+              <span class="date-wrap">
+                <input type="date" [(ngModel)]="date" />
+                <ion-icon [icon]="calendarIcon" aria-hidden="true" />
+              </span>
+            </label>
+          </div>
+
+          <label class="field-wrap">
+            <span class="field-label">Notes <small>(optional)</small></span>
+            <textarea class="text-input text-input--area" rows="3" placeholder="Add a note..." [(ngModel)]="notes"></textarea>
+          </label>
+
+          <label class="field-wrap">
+            <span class="field-label">Attachment <small>(optional)</small></span>
+            <input class="text-input" type="url" placeholder="Paste receipt image URL" [(ngModel)]="receiptImageUrl" />
+          </label>
           <button type="button" class="attach-btn">
             <ion-icon [icon]="receiptIcon" aria-hidden="true" />
             Add receipt photo
@@ -51,114 +159,159 @@ import { ExpenseService } from '../services/expense.service';
         </section>
 
         @if (showError) {
-          <p class="error-copy">Please enter a title and a positive amount.</p>
+          <p class="error-copy" role="alert">Please enter a title and a positive amount.</p>
         }
 
         <div class="actions">
-          <button class="save-btn" (click)="saveExpense()">Save Expense</button>
           <button class="cancel-btn" (click)="goBack()">Cancel</button>
+          <button class="save-btn" (click)="saveExpense()">Save Expense</button>
         </div>
       </main>
     </ion-content>
   `,
   styles: [`
-    :host { display:flex; flex-direction:column; height:100%; background:#f4f8f5; }
-    .form-header { }
-    .form-header h1 { margin:0; text-align:center; font-size:clamp(1.3rem, 4.6vw, 1.7rem); color:#0f7d4d; font-weight:800; letter-spacing:-0.01em; }
-    .icon-btn { border:none; }
-    .icon-btn.plain { background:transparent; color:#1f4e38; }
-    .icon-btn.success { background:#149255; color:#fff; }
-    .add-content { --background:#f4f8f5; }
-    .form-shell { }
-    .form-card { display:grid; gap:0.75rem; }
-    .field-wrap { display:grid; gap:0.35rem; }
-    .field-wrap span { font-size:0.9rem; font-weight:600; color:#355a48; }
-    .field-wrap em { color:#e53e3e; font-style:normal; }
-    .field-wrap small { color:#6a8577; font-weight:500; }
-    .field-wrap > input, .field-wrap > select, .field-wrap > textarea, .amount-wrap, .date-wrap, .select-wrap { width:100%; border:1px solid #d8e3dd; border-radius:9px; background:#fff; min-height:2.45rem; font-size:0.94rem; color:#11291d; }
-    .field-wrap > input, .field-wrap > select, .field-wrap > textarea { padding:0.6rem 0.7rem; }
-    .field-wrap > input:focus,
-    .field-wrap > input:focus-visible,
-    .field-wrap > select:focus,
-    .field-wrap > select:focus-visible,
-    .field-wrap > textarea:focus,
-    .field-wrap > textarea:focus-visible {
-      border-color:#d8e3dd;
-      box-shadow:none;
-      outline:none;
+    /* Add expense — "Citrus & Ink" (tokens from src/theme/citrus.scss). */
+    :host { display:flex; flex-direction:column; height:100%; background:var(--h-canvas); }
+    .add-content::part(background) { background:var(--h-canvas); }
+    .visually-hidden { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }
+    ion-icon { flex-shrink:0; }
+
+    .form-header {
+      position:sticky; top:0; z-index:20;
+      display:grid; grid-template-columns:44px minmax(0, 1fr) 44px; align-items:center; gap:12px;
+      padding:calc(env(safe-area-inset-top, 0px) + 12px) var(--h-gutter) 12px;
+      background:color-mix(in srgb, var(--h-canvas) 88%, transparent); backdrop-filter:blur(18px);
     }
-    input::placeholder, textarea::placeholder { color:#98aa9f; }
-    textarea { resize:none; }
-    .amount-wrap, .date-wrap, .select-wrap { display:grid; align-items:center; }
-    .amount-wrap { grid-template-columns:auto 1fr; padding:0 0.7rem; }
-    .amount-wrap span { color:#335444; font-weight:700; font-size:1.05rem; }
-    .amount-wrap:focus-within {
-      border-color:#d8e3dd;
-      box-shadow:none;
+    .icon-btn {
+      width:44px; height:44px; padding:0; border-radius:50%; border:1px solid var(--h-line);
+      background:var(--h-surface); color:var(--h-ink); display:grid; place-items:center; font-size:20px;
     }
-    .amount-wrap input {
-      width:100%;
-      min-height:2.45rem;
-      border:none;
-      border-radius:0;
-      min-width:0;
-      margin:0;
-      padding-left:0.42rem;
-      background:transparent;
-      box-shadow:none;
-      outline:none;
-      appearance:textfield;
-      -webkit-appearance:none;
-      -moz-appearance:textfield;
+    .icon-btn--accent { border:none; background:var(--h-accent); color:#fff; box-shadow:0 8px 16px -8px var(--h-accent-glow); }
+    .header-text { text-align:center; }
+    .header-text h1 { margin:0; font-size:1.3rem; font-weight:800; letter-spacing:-0.03em; color:var(--h-ink); }
+    .header-text p { margin:2px 0 0; font-size:0.76rem; font-weight:600; color:var(--h-muted); }
+
+    .form-shell {
+      width:min(100%, 40rem); margin:0 auto; padding:4px var(--h-gutter) 0;
+      display:grid; grid-template-columns:minmax(0, 1fr); gap:16px;
     }
-    .amount-wrap input::-webkit-outer-spin-button,
-    .amount-wrap input::-webkit-inner-spin-button {
-      margin:0;
-      -webkit-appearance:none;
+
+    /* Ink live-total card */
+    .total-card {
+      position:relative; isolation:isolate; overflow:hidden;
+      display:grid; grid-template-columns:88px minmax(0, 1fr); align-items:center; gap:16px;
+      padding:18px; border-radius:28px; color:#fff;
+      background:
+        radial-gradient(70% 90% at 100% 100%, rgba(255, 106, 61, 0.5), transparent 70%),
+        var(--h-hero-bg);
+      outline:1px solid var(--h-hero-border); outline-offset:-1px;
+      box-shadow:0 24px 40px -24px rgba(22, 20, 29, 0.6);
     }
-    .amount-wrap input:focus,
-    .amount-wrap input:focus-visible {
-      outline:none;
-      box-shadow:none;
+    .hero-dots {
+      position:absolute; z-index:-1; inset:0 0 auto auto; width:50%; height:80%;
+      background-image:radial-gradient(rgba(255,255,255,0.16) 1.2px, transparent 1.4px); background-size:14px 14px;
+      mask-image:linear-gradient(225deg, #000 10%, transparent 70%);
     }
-    .amount-wrap.readonly { background:#f8fbf9; }
-    .amount-wrap.readonly input { color:#1e5037; font-weight:700; }
-    .date-wrap, .select-wrap { grid-template-columns:1fr auto; padding-right:0.65rem; }
-    .date-wrap input, .select-wrap select { border:none; background:transparent; }
-    .date-wrap:focus-within,
-    .select-wrap:focus-within {
-      border-color:#d8e3dd;
-      box-shadow:none;
+    .total-emoji {
+      width:88px; height:88px; border-radius:24px; display:grid; place-items:center;
+      background:var(--tile); font-size:2.6rem; transform:rotate(-5deg);
     }
-    .date-wrap input:focus,
-    .date-wrap input:focus-visible,
-    .select-wrap select:focus,
-    .select-wrap select:focus-visible {
-      outline:none;
-      box-shadow:none;
+    .total-info { min-width:0; display:grid; justify-items:start; }
+    .total-eyebrow {
+      margin:0 0 4px; padding:3px 9px; border-radius:8px; background:var(--h-lilac); color:#16141d;
+      font-size:0.6rem; font-weight:800; letter-spacing:0.08em; text-transform:uppercase;
     }
-    .date-wrap input[type="date"] { appearance:none; -webkit-appearance:none; -moz-appearance:none; }
-    .date-wrap input[type="date"]::-webkit-calendar-picker-indicator { opacity:0; width:0; margin:0; padding:0; }
-    .select-wrap select { appearance:none; -webkit-appearance:none; -moz-appearance:none; }
-    .select-wrap select::-ms-expand { display:none; }
-    .attach-btn { min-height:3rem; border:1px dashed #ccddd1; border-radius:10px; background:#fff; color:#149255; display:flex; align-items:center; justify-content:center; gap:0.45rem; font-weight:700; }
-    .error-copy { margin:0.15rem 0; color:#c62828; font-size:0.84rem; }
-    .actions { display:grid; gap:0.55rem; }
-    .save-btn,.cancel-btn { border:none; border-radius:12px; min-height:2.8rem; font-weight:700; font-size:0.95rem; }
-    .save-btn { background:#149255; color:#fff; }
-    .cancel-btn { background:transparent; color:#1f6f4a; }
-    input:focus,
-    input:focus-visible,
-    select:focus,
-    select:focus-visible,
-    textarea:focus,
-    textarea:focus-visible,
-    .amount-wrap:focus-within,
-    .date-wrap:focus-within,
-    .select-wrap:focus-within {
-      outline:none !important;
-      box-shadow:none !important;
-      border-color:#d8e3dd !important;
+    .total-title {
+      max-width:100%; margin:0; font-size:1rem; font-weight:800; color:rgba(255,255,255,0.9);
+      white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+    }
+    .total-label { margin:8px 0 0; font-size:0.62rem; font-weight:800; letter-spacing:0.08em; text-transform:uppercase; color:rgba(255,255,255,0.55); }
+    .total-value { margin:0; font-family:var(--h-display); font-size:2rem; font-weight:800; letter-spacing:-0.04em; line-height:1.05; color:var(--h-sun); }
+    .total-breakdown { margin:2px 0 0; font-size:0.74rem; font-weight:600; color:rgba(255,255,255,0.65); }
+
+    /* Section cards */
+    .form-card {
+      display:grid; gap:16px; padding:18px; border-radius:26px;
+      border:1px solid var(--h-line); background:var(--h-surface); box-shadow:var(--h-shadow);
+    }
+    .card-head { display:flex; align-items:center; gap:12px; }
+    .card-icon {
+      width:42px; height:42px; flex-shrink:0; border-radius:14px; display:grid; place-items:center;
+      background:var(--h-tile-3); font-size:1.2rem; transform:rotate(-6deg);
+    }
+    .card-head h2 { margin:0; font-size:1.05rem; font-weight:800; letter-spacing:-0.02em; color:var(--h-ink); }
+    .card-head p { margin:2px 0 0; font-size:0.78rem; color:var(--h-muted); }
+
+    .field-wrap { min-width:0; margin:0; padding:0; border:0; display:grid; gap:8px; }
+    .field-label { padding:0; font-size:0.78rem; font-weight:700; color:var(--h-ink-soft); }
+    legend.field-label { margin-bottom:8px; }
+    .field-label em { font-style:normal; color:var(--h-accent); }
+    .field-label small { font-weight:600; color:var(--h-muted); }
+    .field-row { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:12px; }
+
+    .text-input, .amount-wrap, .date-wrap {
+      width:100%; min-width:0; min-height:50px; border:1px solid var(--h-line); border-radius:16px;
+      background:var(--h-canvas); color:var(--h-ink); font-size:0.92rem; font-weight:600;
+    }
+    .text-input { padding:0 14px; }
+    .text-input--area { min-height:96px; padding:12px 14px; resize:vertical; }
+    .text-input::placeholder, .amount-wrap input::placeholder { color:var(--h-muted); font-weight:500; }
+    .amount-wrap, .date-wrap { position:relative; display:flex; align-items:center; gap:6px; padding:0 14px; }
+    .amount-wrap > span { font-weight:800; color:var(--h-accent); }
+    .amount-wrap input, .date-wrap input {
+      flex:1; width:100%; min-width:0; height:48px; border:none; background:transparent; padding:0;
+      color:var(--h-ink); font-size:0.92rem; font-weight:700; appearance:textfield; -moz-appearance:textfield;
+    }
+    .amount-wrap--big { min-height:64px; }
+    .amount-wrap--big > span { font-family:var(--h-display); font-size:1.4rem; }
+    .amount-wrap--big input { height:62px; font-family:var(--h-display); font-size:1.6rem; font-weight:800; letter-spacing:-0.03em; }
+    .amount-wrap input::-webkit-outer-spin-button, .amount-wrap input::-webkit-inner-spin-button { margin:0; -webkit-appearance:none; }
+    .date-wrap input { font-size:0.86rem; }
+    .date-wrap ion-icon { position:absolute; right:12px; color:var(--h-muted); font-size:18px; pointer-events:none; }
+    .date-wrap input::-webkit-calendar-picker-indicator { position:absolute; right:0; width:44px; height:100%; opacity:0; cursor:pointer; }
+    .text-input:focus, .amount-wrap:focus-within, .date-wrap:focus-within {
+      border-color:var(--h-accent); box-shadow:0 0 0 4px var(--h-accent-glow);
+    }
+    /* Inner inputs: the wrapper draws the ring; beat the global input:not(…):focus rule (0,5,1). */
+    :host .form-card .field-wrap .amount-wrap input:focus,
+    :host .form-card .field-wrap .date-wrap input:focus { outline:none; box-shadow:none; }
+    :host .form-card .field-wrap input.text-input:focus { outline:none; border-color:var(--h-accent); box-shadow:0 0 0 4px var(--h-accent-glow); }
+
+    .category-grid { display:flex; flex-wrap:wrap; gap:6px; }
+    .category-chip {
+      display:inline-flex; align-items:center; gap:6px; min-height:36px; padding:0 12px 0 4px;
+      border:1px solid var(--h-line); border-radius:999px; background:var(--h-canvas);
+      color:var(--h-ink-soft); font-size:0.76rem; font-weight:700; cursor:pointer;
+      transition:background-color 160ms ease, color 160ms ease;
+    }
+    .category-chip__emoji { width:28px; height:28px; border-radius:50%; display:grid; place-items:center; background:var(--tile); font-size:0.9rem; }
+    .category-chip.is-selected { background:var(--h-btn-bg); border-color:var(--h-btn-bg); color:var(--h-btn-fg); }
+    .category-chip:has(input:focus-visible) { outline:3px solid var(--h-accent-glow); outline-offset:2px; }
+
+    .attach-btn {
+      min-height:52px; border:1.5px dashed color-mix(in srgb, var(--h-accent) 45%, transparent); border-radius:16px;
+      background:transparent; color:var(--h-accent); display:flex; align-items:center; justify-content:center; gap:8px;
+      font-size:0.88rem; font-weight:800;
+    }
+    .error-copy {
+      margin:0; padding:12px 14px; border-radius:16px;
+      background:var(--h-danger-surface); color:var(--h-danger); font-size:0.85rem; font-weight:700;
+    }
+
+    .actions {
+      position:sticky; bottom:0; z-index:10;
+      margin:0 calc(var(--h-gutter) * -1); padding:12px var(--h-gutter) calc(12px + env(safe-area-inset-bottom, 0px));
+      display:grid; grid-template-columns:minmax(0, 1fr) minmax(0, 1.7fr); gap:10px;
+      background:color-mix(in srgb, var(--h-canvas) 88%, transparent); backdrop-filter:blur(18px);
+      border-top:1px solid var(--h-line);
+    }
+    .save-btn, .cancel-btn { min-height:54px; border-radius:999px; font-size:0.95rem; font-weight:800; transition:transform 140ms ease; }
+    .save-btn:active, .cancel-btn:active { transform:scale(0.97); }
+    .save-btn { border:none; background:var(--h-accent); color:#fff; box-shadow:0 12px 24px -12px var(--h-accent-glow); }
+    .cancel-btn { border:1px solid var(--h-line); background:var(--h-surface); color:var(--h-ink); }
+
+    @media (max-width: 359px) {
+      .field-row { grid-template-columns:1fr; }
     }
   `],
   changeDetection: ChangeDetectionStrategy.OnPush
@@ -187,6 +340,14 @@ export class AddExpensePage {
   protected notes = '';
   protected receiptImageUrl = '';
   protected showError = false;
+
+  protected categoryEmoji(category: ExpenseCategory): string {
+    return CATEGORY_EMOJI[category] ?? '🛒';
+  }
+
+  protected tileColor(category: ExpenseCategory): string {
+    return categoryTileColor(category);
+  }
 
   protected get currencySymbol(): string {
     return getCurrencySymbol(this.expenseService.getDisplayCurrency());

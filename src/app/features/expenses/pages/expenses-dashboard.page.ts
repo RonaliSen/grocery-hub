@@ -1,51 +1,62 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { AlertController, IonContent, IonFab, IonFabButton, IonIcon } from '@ionic/angular/standalone';
-import { addOutline, alertCircleOutline, calendarOutline, chevronDownOutline, informationCircleOutline, walletOutline } from 'ionicons/icons';
+import { addOutline, alertCircleOutline, calendarOutline, chevronDownOutline, informationCircleOutline, optionsOutline, walletOutline } from 'ionicons/icons';
 
 import { CATEGORY_LABELS } from '../../../core/constants/app-config';
 import { formatCurrencyAmount } from '../../../core/utils/currency.utils';
+import { CATEGORY_EMOJI, categoryTileColor } from '../../pantry/utils/pantry-category-style.util';
 import { ExpenseCategory } from '../models/expense.model';
 import { BudgetOverview, ExpenseService, ExpectedSpendSummary } from '../services/expense.service';
 
 @Component({
   selector: 'app-expenses-dashboard-page',
   standalone: true,
+  host: { class: 'theme-citrus' },
   imports: [IonContent, IonFab, IonFabButton, IonIcon, RouterLink],
   template: `
     <ion-content [fullscreen]="true" class="expenses-content">
-      <main class="page-shell app-mobile-shell app-mobile-shell--tabbed" [class.page-shell--empty]="!hasBudget() || !overview()">
+      <main class="page-shell" [class.page-shell--empty]="!hasBudget() || !overview()">
         @if (!hasBudget()) {
-          <section class="empty-state app-mobile-card">
+          <section class="empty-state">
+            <span class="empty-emoji" aria-hidden="true">💰</span>
             <h2>No budget configured.</h2>
             <p>Set up your weekly or monthly budget to start tracking spending.</p>
             <a class="primary-btn" [routerLink]="['/tabs/expenses/budget']">Configure Budget</a>
           </section>
         } @else if (!overview()) {
-          <section class="empty-state app-mobile-card">
+          <section class="empty-state">
+            <span class="empty-emoji" aria-hidden="true">⏳</span>
             <h2>Budget starts soon</h2>
             <p>Your selected budget cycle has not started yet.</p>
           </section>
         } @else {
+          @let o = overview()!;
+          @let e = expected()!;
+
           <header class="expenses-header">
             <div class="header-top">
+              <span class="header-icon" aria-hidden="true"><ion-icon [icon]="walletIcon" /></span>
               <div class="title-group">
-                <ion-icon aria-hidden="true" [icon]="walletIcon" class="header-icon" />
-                <h1 class="header-title">{{ overview()!.cycle.budgetType === 'weekly' ? 'Weekly Expenses' : 'Monthly Expenses' }}</h1>
+                <h1 class="header-title">{{ o.cycle.budgetType === 'weekly' ? 'Weekly Expenses' : 'Monthly Expenses' }}</h1>
+                <p class="header-subtitle">{{ o.daysLeft }} {{ o.daysLeft === 1 ? 'day' : 'days' }} left in this cycle</p>
               </div>
+              <a class="icon-link" [routerLink]="['/tabs/expenses/budget']" aria-label="Budget settings">
+                <ion-icon aria-hidden="true" [icon]="settingsIcon" />
+              </a>
             </div>
             @if (cycleOptions().length > 0) {
-              <label class="cycle-picker cycle-picker--plain" aria-label="Select budget cycle">
+              <label class="cycle-picker" aria-label="Select budget cycle">
                 <span class="cycle-picker__label">Cycle</span>
-                <div class="cycle-picker__control" [class.cycle-picker__control--active]="isViewingActiveCycle()" [class.cycle-picker__control--past]="!isViewingActiveCycle()">
-                  <ion-icon [icon]="calendarIcon" />
+                <span class="cycle-picker__control">
+                  <ion-icon aria-hidden="true" [icon]="calendarIcon" />
                   <select [value]="selectedCycleId()" (change)="onCycleChange($event)">
                     @for (cycle of cycleOptions(); track cycle.id) {
                       <option [value]="cycle.id">{{ cycle.label }}</option>
                     }
                   </select>
-                  <ion-icon [icon]="chevronDownIcon" class="cycle-picker__chevron" />
-                </div>
+                  <ion-icon aria-hidden="true" [icon]="chevronDownIcon" class="cycle-picker__chevron" />
+                </span>
                 <span class="cycle-picker__meta" [class.cycle-picker__meta--active]="isViewingActiveCycle()">
                   {{ isViewingActiveCycle() ? 'Current cycle' : 'Past cycle' }}
                 </span>
@@ -53,77 +64,98 @@ import { BudgetOverview, ExpenseService, ExpectedSpendSummary } from '../service
             }
           </header>
 
-          <section class="summary-card app-mobile-card">
+          <!-- Budget overview (ink hero) -->
+          <section class="summary-card" aria-label="Budget Overview">
+            <div class="hero-dots" aria-hidden="true"></div>
             <div class="summary-head">
-              <div>
-                <h2>Budget Overview</h2>
-                <p class="cycle-caption">{{ cycleLabel() }}</p>
+              <h2 class="visually-hidden">Budget Overview</h2>
+              <span class="status-pill" [class]="'status-pill ' + statusClass()">{{ statusTitle() }}</span>
+            </div>
+
+            <div class="summary-main">
+              <div class="summary-figures">
+                <p class="summary-label">{{ o.overspent > 0 ? 'Overspent' : 'Remaining' }}</p>
+                <p class="summary-amount" [class.alert]="o.overspent > 0">
+                  {{ formatAmount(o.overspent > 0 ? o.overspent : o.remainingDisplay) }}
+                </p>
+                <p class="summary-of">of {{ formatAmount(o.budgetAmount) }} · {{ cycleLabel() }}</p>
               </div>
-              <span class="status-pill" [class]="statusClass()">{{ statusTitle() }}</span>
+              <div
+                class="usage-ring"
+                [class]="'usage-ring ' + progressClass()"
+                [style.--p]="progressWidth()"
+                role="img"
+                [attr.aria-label]="usageSubcopy()"
+              >
+                <span class="usage-ring__value">{{ o.progressPercent }}%</span>
+                <span class="usage-ring__caption">{{ usageLabel() }}</span>
+              </div>
             </div>
 
-            <div class="overview-grid">
-              <article class="overview-cell">
-                <p>Budget Amount</p>
-                <strong>{{ formatAmount(overview()!.budgetAmount) }}</strong>
-              </article>
-              <article class="overview-cell">
-                <p>Spent</p>
-                <strong>{{ formatAmount(overview()!.spent) }}</strong>
-              </article>
-              <article class="overview-cell">
-                <p>{{ overview()!.overspent > 0 ? 'Overspent' : 'Remaining' }}</p>
-                <strong [class.alert]="overview()!.overspent > 0">{{ formatAmount(overview()!.overspent > 0 ? overview()!.overspent : overview()!.remainingDisplay) }}</strong>
-                <small>{{ summarySubLabel() }}</small>
-              </article>
-              <article class="overview-cell">
-                <p>Days Left</p>
-                <strong>{{ overview()!.daysLeft }} days</strong>
-                <small>In this cycle</small>
-              </article>
-            </div>
+            <p class="usage-subcopy">{{ usageSubcopy() }}</p>
 
-            <div class="usage-head">
-              <span>{{ usageLabel() }}</span>
-              <span>{{ formatAmount(overview()!.budgetAmount) }}</span>
-            </div>
-            <div class="progress-track">
-              <div class="progress-value" [class]="progressClass()" [style.width.%]="progressWidth()"></div>
-            </div>
-            <small>{{ usageSubcopy() }}</small>
-
-            <p class="status-message" [class]="statusClass()">{{ statusMessage() }}</p>
+            <p class="status-message" [class]="'status-message ' + statusClass()">{{ statusMessage() }}</p>
           </section>
 
-          <section class="expected-card app-mobile-card">
+          <!-- Key figures -->
+          <section class="stat-grid" aria-label="Budget figures">
+            <article class="stat-tile stat-tile--budget">
+              <span class="stat-emoji" aria-hidden="true">💰</span>
+              <p>Budget Amount</p>
+              <strong>{{ formatAmount(o.budgetAmount) }}</strong>
+              <small>{{ o.cycle.budgetType === 'weekly' ? 'Per week' : 'Per month' }}</small>
+            </article>
+            <article class="stat-tile stat-tile--spent">
+              <span class="stat-emoji" aria-hidden="true">🧾</span>
+              <p>Spent</p>
+              <strong>{{ formatAmount(o.spent) }}</strong>
+              <small>{{ summarySubLabel() }}</small>
+            </article>
+            <article class="stat-tile stat-tile--days">
+              <span class="stat-emoji" aria-hidden="true">📅</span>
+              <p>Days Left</p>
+              <strong>{{ o.daysLeft }} days</strong>
+              <small>In this cycle</small>
+            </article>
+          </section>
+
+          <!-- Expected spend -->
+          <section class="card expected-card">
             <div class="card-head">
-              <div>
-                <h3>Expected Spend ({{ overview()!.daysLeft }} days left)</h3>
+              <span class="card-icon" aria-hidden="true">🎯</span>
+              <div class="card-head__text">
+                <h3>Expected Spend ({{ o.daysLeft }} days left)</h3>
                 <p>Based on your budget and cycle length</p>
               </div>
               <button type="button" class="info-button" (click)="showExpectedSpendInfo()" aria-label="How expected spend is calculated">
-                <ion-icon [icon]="infoIcon" />
+                <ion-icon aria-hidden="true" [icon]="infoIcon" />
               </button>
             </div>
-            <strong class="expected-amount" [class]="statusClass()">{{ formatAmount(expected()!.expectedSpend) }}</strong>
-            <div class="expected-stats">
-              <p>Expected per day: <strong>{{ formatAmount(expected()!.dailyBudget) }}</strong></p>
-              <p>{{ expectedSupportCopy() }}</p>
+            <div class="expected-body">
+              <strong class="expected-amount" [class]="'expected-amount ' + statusClass()">{{ formatAmount(e.expectedSpend) }}</strong>
+              <span class="expected-daily">
+                <small>Expected per day</small>
+                <strong>{{ formatAmount(e.dailyBudget) }}</strong>
+              </span>
             </div>
+            <p class="expected-support">{{ expectedSupportCopy() }}</p>
           </section>
 
           @if (warning()) {
-            <section class="warning-card app-mobile-card">
-              <div class="warning-head">
-                <ion-icon [icon]="warningIcon" />
-                <h3>Warning</h3>
+            <section class="card warning-card" role="status">
+              <div class="card-head">
+                <span class="card-icon card-icon--warn" aria-hidden="true"><ion-icon [icon]="warningIcon" /></span>
+                <div class="card-head__text">
+                  <h3>Warning</h3>
+                  <p>Only {{ formatAmount(warning()!.remaining) }} remains with {{ warning()!.daysLeft }} days left in this cycle.</p>
+                </div>
               </div>
-              <p>Only {{ formatAmount(warning()!.remaining) }} remains with {{ warning()!.daysLeft }} days left in this cycle.</p>
-              <p>Recommended spending: {{ formatAmount(warning()!.recommendedDailyLimit) }} per day maximum.</p>
+              <p class="warning-tip">Recommended spending: <strong>{{ formatAmount(warning()!.recommendedDailyLimit) }}</strong> per day maximum.</p>
             </section>
           }
 
-          <section class="cards app-mobile-card">
+          <!-- Categories -->
+          <section class="card">
             <div class="section-head">
               <h3>Category Summary</h3>
               <a [routerLink]="['/tabs/expenses/analytics']">View Analytics</a>
@@ -133,16 +165,21 @@ import { BudgetOverview, ExpenseService, ExpectedSpendSummary } from '../service
             } @else {
               <div class="chips-grid">
                 @for (category of categoryTotals(); track category.category) {
-                  <article class="category-chip">
+                  <article class="category-chip" [style.--tile]="tileColor(category.category)">
+                    <span class="category-chip__emoji" aria-hidden="true">{{ categoryEmoji(category.category) }}</span>
                     <p>{{ categoryLabel(category.category) }}</p>
                     <strong>{{ formatAmount(category.total) }}</strong>
+                    <span class="share-bar" aria-hidden="true">
+                      <span [style.width.%]="o.spent > 0 ? (category.total / o.spent) * 100 : 0"></span>
+                    </span>
                   </article>
                 }
               </div>
             }
           </section>
 
-          <section class="cards app-mobile-card">
+          <!-- Recent purchases -->
+          <section class="card">
             <div class="section-head">
               <h3>Recent Purchases</h3>
               <a [routerLink]="['/tabs/expenses/history']">View History</a>
@@ -150,25 +187,29 @@ import { BudgetOverview, ExpenseService, ExpectedSpendSummary } from '../service
             @if (recentExpenses().length === 0) {
               <p class="empty-copy">No purchases recorded for this cycle yet.</p>
             } @else {
-              @for (expense of recentExpenses(); track expense.id) {
-                <article class="expense-item" [routerLink]="['/tabs/expenses', expense.id]">
-                  <div class="expense-main">
-                    <div>
+              <div class="expense-list">
+                @for (expense of recentExpenses(); track expense.id) {
+                  <a class="expense-item" [routerLink]="['/tabs/expenses', expense.id]">
+                    <span class="expense-emoji" [style.--tile]="tileColor(expense.category)" aria-hidden="true">
+                      {{ categoryEmoji(expense.category) }}
+                    </span>
+                    <span class="expense-main">
                       <strong>{{ expense.title }}</strong>
-                      <p>{{ categoryLabel(expense.category) }} · {{ formatDate(expense.date) }}</p>
-                    </div>
-                  </div>
-                  <div class="amount-wrap"><strong>{{ formatAmount(expenseTotal(expense)) }}</strong></div>
-                </article>
-              }
+                      <small>{{ categoryLabel(expense.category) }} · {{ formatDate(expense.date) }}</small>
+                    </span>
+                    <strong class="expense-amount">{{ formatAmount(expenseTotal(expense)) }}</strong>
+                  </a>
+                }
+              </div>
             }
           </section>
 
-          <section class="actions app-mobile-card">
-            <a [routerLink]="['/tabs/expenses/budget']">Budget Settings</a>
-            <a [routerLink]="['/tabs/expenses/history']">View History</a>
-            <a [routerLink]="['/tabs/expenses/analytics']">View Analytics</a>
-          </section>
+          <!-- Quick actions -->
+          <nav class="actions" aria-label="Expense tools">
+            <a [routerLink]="['/tabs/expenses/budget']"><span aria-hidden="true">⚙️</span>Budget Settings</a>
+            <a [routerLink]="['/tabs/expenses/history']"><span aria-hidden="true">🗂️</span>View History</a>
+            <a [routerLink]="['/tabs/expenses/analytics']"><span aria-hidden="true">📊</span>View Analytics</a>
+          </nav>
         }
       </main>
 
@@ -180,123 +221,222 @@ import { BudgetOverview, ExpenseService, ExpectedSpendSummary } from '../service
     </ion-content>
   `,
   styles: [`
-    :host { display:flex; flex-direction:column; height:100%; background:#f4f8f5; }
-    .expenses-content {
-      --background:#f6f8f7;
-      --padding-top: 0;
-      --padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 4.9rem);
-    }
-    .page-shell { padding-top:0; padding-bottom:0; }
-    .page-shell--empty {
-      padding-top: calc(env(safe-area-inset-top, 0px) + 1rem);
-      align-content: start;
-    }
-    .expenses-header {
-      position: sticky;
-      top: 0;
-      z-index: 20;
-      background: var(--app-header-background);
-      backdrop-filter: blur(12px);
-      border-bottom: 1px solid var(--app-border-strong);
-      padding: calc(env(safe-area-inset-top, 0px) + 1rem) 1rem 0.75rem;
-      margin: 0 -1rem 1rem;
-      display: grid;
-      gap: 0.75rem;
-    }
-    .header-top { display:flex; justify-content:space-between; align-items:center; }
-    .title-group { display:flex; align-items:center; gap:0.75rem; flex:1; }
-    .header-icon { color: var(--app-primary); font-size: 2rem; }
-    .header-title {
-      margin:0;
-      font-family:'Plus Jakarta Sans', 'Manrope', sans-serif;
-      font-size:clamp(1.55rem, 5.2vw, 2rem);
-      font-weight:800;
-      letter-spacing:-0.01em;
-      line-height:1.15;
-      color:#0a8f5b;
-    }
-    .cycle-picker { display:grid; gap:0.28rem; }
-    .cycle-picker__label { color:#6a8075; font-size:0.68rem; font-weight:800; letter-spacing:0.08em; text-transform:uppercase; }
-    .cycle-picker__control { display:grid; grid-template-columns:auto minmax(0, 1fr) auto; align-items:center; gap:0.45rem; min-height:2.55rem; border:1px solid #d8e6dc; border-radius:999px; background:#fff; color:#345745; padding:0 0.75rem; box-shadow:0 10px 22px rgba(15, 125, 77, 0.08); transition:border-color 160ms ease, box-shadow 160ms ease, background 160ms ease, transform 160ms ease; }
-    .cycle-picker__control--active { border-color:#8ad0aa; background:linear-gradient(180deg, #f5fcf8 0%, #eaf8f0 100%); box-shadow:0 14px 28px rgba(20, 146, 85, 0.14); }
-    .cycle-picker__control--past { border-color:#d8e1db; background:linear-gradient(180deg, #ffffff 0%, #f6f8f7 100%); }
-    .cycle-picker:focus-within .cycle-picker__control { border-color:#149255; box-shadow:0 0 0 3px rgba(20, 146, 85, 0.14); }
-    .cycle-picker--plain { -webkit-tap-highlight-color: transparent; }
-    .cycle-picker--plain:focus-within .cycle-picker__control { border-color:#d8e6dc; box-shadow:0 10px 22px rgba(15, 125, 77, 0.08); }
-    .cycle-picker--plain:focus-within .cycle-picker__control--active { border-color:#8ad0aa; box-shadow:0 14px 28px rgba(20, 146, 85, 0.14); }
-    .cycle-picker--plain:focus-within .cycle-picker__control--past { border-color:#d8e1db; box-shadow:0 10px 22px rgba(15, 125, 77, 0.08); }
-    .cycle-picker__control ion-icon { color:#5e7d6c; font-size:0.95rem; }
-    .cycle-picker__chevron { font-size:0.85rem; }
-    .cycle-picker select { border:none; background:transparent; color:#244636; font-size:0.85rem; font-weight:700; min-width:11rem; outline:none; appearance:none; padding:0; }
-    .cycle-picker--plain select:focus { border-color:transparent; box-shadow:none; outline:none; }
-    .cycle-picker__meta { color:#708679; font-size:0.72rem; font-weight:700; }
-    .cycle-picker__meta--active { color:#12814c; }
-    .page-shell { }
-    .summary-card,.cards,.empty-state,.expected-card,.warning-card,.actions { }
-    .empty-state { text-align:center; display:grid; gap:0.7rem; }
-    .empty-state h2,.empty-state p { margin:0; }
-    .empty-state p { color:#5d7569; }
-    .primary-btn { color:#fff; background:#149255; text-decoration:none; font-weight:700; display:inline-flex; justify-content:center; align-items:center; min-height:2.8rem; border-radius:999px; }
-    .summary-card { display:grid; gap:1rem; border:1px solid #e6efe8; box-shadow:0 12px 28px rgba(16, 74, 43, 0.06); }
-    .summary-head { display:flex; justify-content:space-between; align-items:flex-start; gap:0.75rem; }
-    .summary-head h2,.summary-head p { margin:0; }
-    .summary-head h2 { color:#11492f; font-size:1.05rem; font-weight:800; }
-    .cycle-caption { color:#64796d; font-size:0.78rem; margin-top:0.2rem; }
-    .status-pill { padding:0.42rem 0.7rem; border-radius:999px; font-size:0.7rem; font-weight:800; white-space:nowrap; }
-    .status-pill.under_expected,.status-pill.on_track { background:#e6f7ee; color:#12814c; }
-    .status-pill.over_expected { background:#fff0e2; color:#d97706; }
-    .status-pill.budget_fully_used { background:#fdeaea; color:#dc2626; }
-    .overview-grid { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); border-top:1px solid #edf3ee; border-left:1px solid #edf3ee; border-radius:1rem; overflow:hidden; }
-    .overview-cell { background:#fff; padding:0.95rem 0.9rem; min-height:5.75rem; border-right:1px solid #edf3ee; border-bottom:1px solid #edf3ee; display:grid; align-content:start; gap:0.22rem; }
-    .overview-cell p { margin:0; font-size:0.76rem; color:#5d7569; }
-    .overview-cell strong { display:block; color:#11291d; font-size:1.42rem; line-height:1.1; letter-spacing:-0.02em; }
-    .overview-cell strong.alert { color:#dc2626; }
-    .overview-cell small { color:#5d7569; font-size:0.75rem; }
-    .usage-head { display:flex; justify-content:space-between; color:#3f5b4d; font-size:0.76rem; font-weight:700; }
-    .progress-track { width:100%; height:0.5rem; border-radius:999px; background:#e8efe9; overflow:hidden; }
-    .progress-value { height:100%; }
-    .progress-value.green { background:linear-gradient(90deg, #149255, #4bbb87); }
-    .progress-value.orange { background:linear-gradient(90deg, #f59e0b, #fbbf24); }
-    .progress-value.red { background:linear-gradient(90deg, #ef4444, #f87171); }
-    .status-message, .warning-card p, .empty-copy { margin:0; color:#4f665b; }
-    .status-message { border-radius:1rem; padding:0.95rem 1rem; background:#f6fbf7; line-height:1.5; font-size:0.88rem; }
-    .status-message.on_track, .status-message.under_expected { background:#fff8ec; border:1px solid #f4deba; }
-    .status-message.over_expected, .status-message.budget_fully_used { background:#fff1f1; border:1px solid #f7caca; }
-    .expected-card,.warning-card { display:grid; gap:0.7rem; }
-    .expected-card { border:1px dashed #ff9b9b; background:#fff; box-shadow:0 10px 24px rgba(220, 38, 38, 0.05); }
-    .card-head,.warning-head,.section-head { display:flex; justify-content:space-between; align-items:center; gap:0.75rem; }
-    .card-head h3,.warning-head h3,.section-head h3 { margin:0; }
-    .card-head { align-items:flex-start; }
-    .card-head p { margin:0.2rem 0 0; font-size:0.78rem; color:#667d70; }
-    .info-button { display:inline-flex; align-items:center; justify-content:center; width:2rem; height:2rem; border:none; border-radius:999px; background:#eef6f0; color:#0f7d4d; padding:0; flex:0 0 auto; }
-    .expected-amount { font-size:1.7rem; line-height:1.1; letter-spacing:-0.03em; color:#f59e0b; }
-    .expected-amount.over_expected, .expected-amount.budget_fully_used { color:#ef4444; }
-    .expected-amount.on_track, .expected-amount.under_expected { color:#f59e0b; }
-    .expected-stats { display:grid; gap:0.2rem; }
-    .expected-stats p { margin:0; color:#23382c; font-size:0.86rem; }
-    .expected-stats strong { font-weight:800; }
-    .warning-card { border:1px solid #f0d7b2; background:#fff9ef; }
-    .warning-head { color:#d97706; justify-content:flex-start; }
-    .section-head { margin-bottom:0.8rem; }
-    .chips-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(min(100%, 130px), 1fr)); gap:0.5rem; }
-    .category-chip { background:#fff; border:1px solid #d8e9de; border-radius:12px; padding:0.75rem; text-align:left; display:grid; gap:0.25rem; }
-    .category-chip p { margin:0; color:#395747; font-size:0.82rem; }
-    .expense-item { display:flex; justify-content:space-between; align-items:center; gap:0.7rem; padding:0.72rem 0; border-bottom:1px solid #edf5ef; color:inherit; text-decoration:none; }
-    .expense-item:last-child { border-bottom:none; }
-    .expense-main p { margin:0.1rem 0 0; color:#5f786b; font-size:0.82rem; }
-    .amount-wrap { display:grid; justify-items:end; }
-    .section-head a, .actions a { color:#0f7d4d; text-decoration:none; font-weight:700; }
-    .actions { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:0.55rem; }
-    .actions a { text-align:center; font-size:0.84rem; }
-    .add-fab { --background:#149255; --border-radius:18px; --box-shadow:0 12px 22px rgba(20,146,85,0.35); width:3.4rem; height:3.4rem; }
+    /* Expenses — "Citrus & Ink". Tokens (--h-*) come from .theme-citrus
+       (src/theme/citrus.scss), shared with Home, Pantry and Cart. */
+    :host { display:flex; flex-direction:column; height:100%; background:var(--h-canvas); }
+    .expenses-content { --padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 6rem); }
+    .expenses-content::part(background) { background:var(--h-canvas); }
+    .visually-hidden { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }
+    ion-icon { flex-shrink:0; }
 
-    @media (max-width: 520px) {
-      .cycle-picker { width:100%; justify-items:stretch; }
-      .cycle-picker__control { width:100%; }
-      .cycle-picker select { min-width:0; width:100%; }
-      .summary-head { grid-template-columns:1fr; display:grid; }
-      .actions { grid-template-columns:repeat(3, minmax(0, 1fr)); }
-      .actions a { font-size:0.78rem; }
+    .page-shell {
+      width:min(100%, 720px);
+      margin:0 auto;
+      padding:0 var(--h-gutter) 24px;
+      display:grid;
+      grid-template-columns:minmax(0, 1fr);
+      gap:16px;
+    }
+    .page-shell--empty { padding-top:calc(env(safe-area-inset-top, 0px) + 24px); }
+
+    /* Header */
+    .expenses-header {
+      position:sticky; top:0; z-index:20;
+      margin:0 calc(var(--h-gutter) * -1);
+      padding:calc(env(safe-area-inset-top, 0px) + 14px) var(--h-gutter) 12px;
+      display:grid; gap:12px;
+      background:color-mix(in srgb, var(--h-canvas) 88%, transparent);
+      backdrop-filter:blur(18px);
+      border-bottom:1px solid var(--h-line);
+    }
+    .header-top { display:flex; align-items:center; gap:12px; }
+    .header-icon {
+      width:44px; height:44px; border-radius:14px; display:grid; place-items:center;
+      background:var(--h-sun); color:#16141d; font-size:22px; transform:rotate(-6deg);
+    }
+    .title-group { flex:1; min-width:0; }
+    .header-title { margin:0; font-size:clamp(1.45rem, 5.4vw, 2rem); font-weight:800; line-height:1.05; letter-spacing:-0.035em; color:var(--h-ink); }
+    .header-subtitle { margin:2px 0 0; font-size:0.8rem; font-weight:600; color:var(--h-muted); }
+    .icon-link {
+      width:44px; height:44px; border-radius:50%; border:1px solid var(--h-line);
+      background:var(--h-surface); color:var(--h-ink); display:grid; place-items:center; font-size:20px;
+    }
+
+    .cycle-picker { display:flex; align-items:center; gap:10px; }
+    .cycle-picker__label { font-size:0.66rem; font-weight:800; letter-spacing:0.08em; text-transform:uppercase; color:var(--h-muted); }
+    .cycle-picker__control {
+      flex:1; min-width:0; display:flex; align-items:center; gap:8px; min-height:44px; padding:0 14px;
+      border:1px solid var(--h-line); border-radius:999px; background:var(--h-surface); color:var(--h-ink-soft);
+    }
+    .cycle-picker__control:focus-within { border-color:var(--h-accent); box-shadow:0 0 0 4px var(--h-accent-glow); }
+    .cycle-picker select {
+      flex:1; min-width:0; border:none; background:transparent; padding:0; appearance:none;
+      color:var(--h-ink); font-size:0.88rem; font-weight:800;
+    }
+    :host .cycle-picker select:focus { outline:none; box-shadow:none; }
+    .cycle-picker__meta {
+      padding:6px 10px; border-radius:999px; white-space:nowrap;
+      background:var(--h-surface); color:var(--h-muted); font-size:0.7rem; font-weight:800;
+    }
+    .cycle-picker__meta--active { background:var(--h-btn-bg); color:var(--h-btn-fg); }
+
+    /* Ink summary hero */
+    .summary-card {
+      position:relative; isolation:isolate; overflow:hidden;
+      display:grid; gap:14px; padding:20px 22px 22px; border-radius:30px; color:#fff;
+      background:
+        radial-gradient(70% 80% at 100% 100%, rgba(255, 106, 61, 0.5), transparent 70%),
+        radial-gradient(45% 55% at 0% 0%, rgba(201, 184, 255, 0.22), transparent 70%),
+        var(--h-hero-bg);
+      outline:1px solid var(--h-hero-border); outline-offset:-1px;
+      box-shadow:0 24px 40px -24px rgba(22, 20, 29, 0.6);
+    }
+    .hero-dots {
+      position:absolute; z-index:-1; inset:0 0 auto auto; width:55%; height:70%;
+      background-image:radial-gradient(rgba(255,255,255,0.16) 1.2px, transparent 1.4px); background-size:14px 14px;
+      mask-image:linear-gradient(225deg, #000 10%, transparent 70%);
+    }
+    .summary-head { display:flex; }
+    .status-pill {
+      padding:6px 12px; border-radius:10px; font-size:0.68rem; font-weight:800; letter-spacing:0.06em;
+      text-transform:uppercase; transform:rotate(-2deg); background:var(--h-lilac); color:#16141d;
+    }
+    .status-pill.under_expected, .status-pill.on_track { background:#9fe3bf; }
+    .status-pill.over_expected { background:var(--h-sun); }
+    .status-pill.budget_fully_used { background:#ff9a9d; }
+    .summary-main { display:flex; align-items:center; justify-content:space-between; gap:16px; }
+    .summary-figures { min-width:0; }
+    .summary-label { margin:0; font-size:0.72rem; font-weight:800; letter-spacing:0.08em; text-transform:uppercase; color:rgba(255,255,255,0.6); }
+    .summary-amount { margin:2px 0 0; font-family:var(--h-display); font-size:clamp(2rem, 9vw, 2.6rem); font-weight:800; letter-spacing:-0.04em; line-height:1; color:var(--h-sun); }
+    .summary-of { margin:6px 0 0; font-size:0.85rem; font-weight:600; color:rgba(255,255,255,0.72); }
+
+    .usage-ring {
+      --ring:#4cc38a;
+      flex-shrink:0; width:104px; height:104px; border-radius:50%;
+      display:grid; place-content:center; text-align:center;
+      background:
+        radial-gradient(closest-side, var(--h-hero-bg) 76%, transparent 77% 100%),
+        conic-gradient(var(--ring) calc(var(--p) * 1%), rgba(255,255,255,0.14) 0);
+    }
+    .usage-ring.orange { --ring:#ffb224; }
+    .usage-ring.red { --ring:#ff6369; }
+    .usage-ring__value { font-family:var(--h-display); font-size:1.4rem; font-weight:800; line-height:1; }
+    .usage-ring__caption { margin-top:2px; font-size:0.6rem; font-weight:700; color:rgba(255,255,255,0.65); }
+
+    .summary-amount.alert { color:#ff8a8e; }
+    .usage-subcopy { margin:-4px 0 0; font-size:0.76rem; font-weight:700; color:rgba(255,255,255,0.7); }
+    .status-message {
+      margin:0; padding:12px 14px; border-radius:16px; font-size:0.85rem; line-height:1.45;
+      background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.1); color:rgba(255,255,255,0.88);
+    }
+    .status-message.over_expected, .status-message.budget_fully_used { background:rgba(255, 99, 105, 0.16); border-color:rgba(255, 99, 105, 0.3); }
+
+    /* Stat tiles */
+    .stat-grid { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:8px; }
+    .stat-tile { min-width:0; display:grid; gap:2px; padding:12px; border-radius:22px; background:var(--tile); }
+    .stat-tile--budget { --tile:var(--h-tile-4); }
+    .stat-tile--spent { --tile:var(--h-tile-1); }
+    .stat-tile--days { --tile:var(--h-tile-3); }
+    .stat-emoji {
+      width:36px; height:36px; margin-bottom:6px; border-radius:12px; display:grid; place-items:center;
+      background:var(--h-surface); font-size:1.1rem;
+    }
+    .stat-tile p { margin:0; font-size:0.7rem; font-weight:700; color:var(--h-ink-soft); }
+    .stat-tile strong { font-family:var(--h-display); font-size:clamp(0.98rem, 4.2vw, 1.3rem); font-weight:800; letter-spacing:-0.03em; color:var(--h-ink); }
+    .stat-tile strong.alert { color:var(--h-danger); }
+    .stat-tile small { font-size:0.72rem; font-weight:600; color:var(--h-muted); }
+
+    /* Generic cards */
+    .card {
+      display:grid; gap:14px; padding:18px; border-radius:26px;
+      border:1px solid var(--h-line); background:var(--h-surface); box-shadow:var(--h-shadow);
+    }
+    .card-head { display:flex; align-items:flex-start; gap:12px; }
+    .card-head__text { flex:1; min-width:0; }
+    .card-head h3, .section-head h3 { margin:0; font-size:1.05rem; font-weight:800; letter-spacing:-0.02em; color:var(--h-ink); }
+    .card-head p { margin:3px 0 0; font-size:0.8rem; line-height:1.4; color:var(--h-muted); }
+    .card-icon {
+      width:42px; height:42px; flex-shrink:0; border-radius:14px; display:grid; place-items:center;
+      background:var(--h-tile-3); font-size:1.2rem; transform:rotate(-6deg);
+    }
+    .card-icon--warn { background:var(--h-warn-surface); color:var(--h-warn); font-size:22px; }
+    .info-button {
+      width:36px; height:36px; flex-shrink:0; padding:0; border:1px solid var(--h-line); border-radius:50%;
+      background:var(--h-canvas); color:var(--h-ink); display:grid; place-items:center; font-size:18px;
+    }
+    .expected-body { display:flex; align-items:flex-end; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+    .expected-amount { font-family:var(--h-display); font-size:2rem; font-weight:800; letter-spacing:-0.04em; line-height:1; color:var(--h-ok); }
+    .expected-amount.over_expected { color:var(--h-warn); }
+    .expected-amount.budget_fully_used { color:var(--h-danger); }
+    .expected-daily { display:grid; justify-items:end; padding:8px 12px; border-radius:14px; background:var(--h-canvas); }
+    .expected-daily small { font-size:0.68rem; font-weight:700; color:var(--h-muted); }
+    .expected-daily strong { font-size:0.95rem; font-weight:800; color:var(--h-ink); }
+    .expected-support { margin:0; font-size:0.78rem; color:var(--h-muted); }
+
+    .warning-card { background:var(--h-warn-surface); border-color:color-mix(in srgb, var(--h-warn) 30%, transparent); box-shadow:none; }
+    .warning-card h3 { color:var(--h-warn); }
+    .warning-card .card-head p, .warning-tip { color:var(--h-ink-soft); }
+    .warning-tip { margin:0; font-size:0.85rem; }
+
+    .section-head { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+    .section-head a {
+      min-height:32px; padding:0 12px; display:inline-flex; align-items:center; border-radius:999px;
+      background:var(--h-canvas); color:var(--h-ink); font-size:0.76rem; font-weight:800; text-decoration:none;
+    }
+    .empty-copy { margin:0; color:var(--h-muted); font-size:0.88rem; }
+
+    .chips-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(min(100%, 136px), 1fr)); gap:10px; }
+    .category-chip { display:grid; gap:2px; padding:12px; border-radius:20px; background:var(--tile); }
+    .category-chip__emoji { font-size:1.3rem; margin-bottom:4px; }
+    .category-chip p { margin:0; font-size:0.74rem; font-weight:700; color:var(--h-ink-soft); }
+    .category-chip strong { font-family:var(--h-display); font-size:1.05rem; font-weight:800; color:var(--h-ink); }
+    .share-bar { height:5px; margin-top:6px; border-radius:999px; background:color-mix(in srgb, var(--h-ink) 10%, transparent); overflow:hidden; }
+    .share-bar span { display:block; height:100%; border-radius:inherit; background:var(--h-ink); }
+
+    .expense-list { display:grid; gap:4px; }
+    .expense-item {
+      display:flex; align-items:center; gap:12px; padding:8px; margin:0 -8px; border-radius:18px;
+      color:inherit; text-decoration:none;
+    }
+    .expense-item:active { background:var(--h-canvas); }
+    .expense-emoji {
+      width:44px; height:44px; flex-shrink:0; border-radius:14px; display:grid; place-items:center;
+      background:var(--tile); font-size:1.25rem;
+    }
+    .expense-main { flex:1; min-width:0; display:grid; gap:2px; }
+    .expense-main strong { font-size:0.95rem; font-weight:800; color:var(--h-ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .expense-main small { font-size:0.76rem; font-weight:600; color:var(--h-muted); }
+    .expense-amount { font-family:var(--h-display); font-size:0.98rem; font-weight:800; color:var(--h-ink); white-space:nowrap; }
+
+    .actions { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:10px; }
+    .actions a {
+      display:grid; justify-items:center; gap:6px; padding:14px 8px; border-radius:22px;
+      border:1px solid var(--h-line); background:var(--h-surface); color:var(--h-ink);
+      font-size:0.76rem; font-weight:800; text-align:center; text-decoration:none;
+    }
+    .actions a span { font-size:1.3rem; }
+
+    /* Empty states */
+    .empty-state {
+      display:grid; justify-items:center; gap:10px; padding:36px 20px; border-radius:28px; text-align:center;
+      background:var(--h-surface); border:2px dashed var(--h-line);
+    }
+    .empty-emoji {
+      width:68px; height:68px; border-radius:22px; display:grid; place-items:center;
+      background:var(--h-tile-3); font-size:2rem; transform:rotate(-6deg);
+    }
+    .empty-state h2 { margin:0; font-size:1.3rem; font-weight:800; color:var(--h-ink); }
+    .empty-state p { margin:0; color:var(--h-ink-soft); }
+    .primary-btn {
+      margin-top:6px; min-height:48px; padding:0 22px; display:inline-flex; align-items:center; border-radius:999px;
+      background:var(--h-accent); color:#fff; font-weight:800; text-decoration:none;
+      box-shadow:0 12px 24px -12px var(--h-accent-glow);
+    }
+
+    .add-fab {
+      --background:var(--h-accent); --background-activated:var(--h-accent); --color:#fff;
+      --border-radius:22px; --box-shadow:0 14px 28px -10px var(--h-accent-glow);
+      width:60px; height:60px; transform:rotate(-6deg);
     }
   `],
   changeDetection: ChangeDetectionStrategy.OnPush
@@ -311,6 +451,7 @@ export class ExpensesDashboardPage {
   protected readonly warningIcon = alertCircleOutline;
   protected readonly infoIcon = informationCircleOutline;
   protected readonly walletIcon = walletOutline;
+  protected readonly settingsIcon = optionsOutline;
   protected readonly selectedCycleId = signal('');
   protected readonly hasBudget = computed(() => !!this.expenseService.getBudgetSettings());
   protected readonly cycleOptions = computed(() =>
@@ -380,6 +521,14 @@ export class ExpensesDashboardPage {
 
   protected formatDate(iso: string): string {
     return new Date(iso).toLocaleDateString(undefined, { day: '2-digit', month: 'short' });
+  }
+
+  protected categoryEmoji(category: ExpenseCategory): string {
+    return CATEGORY_EMOJI[category] ?? '🛒';
+  }
+
+  protected tileColor(category: ExpenseCategory): string {
+    return categoryTileColor(category);
   }
 
   protected categoryLabel(category: ExpenseCategory): string {

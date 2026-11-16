@@ -15,7 +15,7 @@ import {
   ValidatorFn,
   Validators,
 } from '@angular/forms';
-import { ActivatedRoute, ParamMap } from '@angular/router';
+import { ActivatedRoute, ParamMap, RouterLink } from '@angular/router';
 import { IonContent, IonIcon, IonToggle } from '@ionic/angular/standalone';
 import {
   addOutline,
@@ -32,198 +32,297 @@ import { map } from 'rxjs/operators';
 import { CATEGORY_FILTER_OPTIONS, CATEGORY_LABELS } from '../../../core/constants/app-config';
 import { NavigationHistoryService } from '../../../core/services/navigation-history.service';
 import { toDateInputValue } from '../../../core/utils/date.utils';
-import { EmptyStateCardComponent } from '../../../shared/components/empty-state-card/empty-state-card.component';
+import { FallbackImageDirective } from '../../../shared/directives/fallback-image.directive';
+import { ExpiryStatusPipe } from '../../../shared/pipes/expiry-status.pipe';
+import { QuantityLabelPipe } from '../../../shared/pipes/quantity-label.pipe';
 import { SettingsService } from '../../settings/services/settings.service';
 import { PantryCategory, QuantityUnit } from '../models/pantry-item.model';
+import { PantryImagePipe } from '../pipes/pantry-image.pipe';
+import { CATEGORY_EMOJI, categoryTileColor } from '../utils/pantry-category-style.util';
+import { getPantryStockStatus, PantryStockStatus } from '../utils/pantry-stock-status.util';
 import { PantryDuplicateItemNameError, PantryStateService } from '../services/pantry-state.service';
 import { ShoppingListStateService } from '../../shopping-list/services/shopping-list-state.service';
 
 @Component({
   selector: 'app-pantry-form-page',
   standalone: true,
+  host: { class: 'theme-citrus' },
   imports: [
-    EmptyStateCardComponent,
+    ExpiryStatusPipe,
+    FallbackImageDirective,
     IonContent,
     IonIcon,
     IonToggle,
+    PantryImagePipe,
+    QuantityLabelPipe,
     ReactiveFormsModule,
+    RouterLink,
   ],
   template: `
     <ion-content [fullscreen]="true" class="pantry-form-content">
       <div class="pantry-form-shell">
         <header class="pantry-form-header">
-          <div class="pantry-form-header__inner">
-            <button
-              type="button"
-              class="pantry-form-header__button pantry-form-header__button--secondary"
-              (click)="goBack()"
-              aria-label="Go back"
-            >
-              <ion-icon aria-hidden="true" [icon]="backIcon" />
-            </button>
+          <button type="button" class="header-btn" (click)="goBack()" aria-label="Go back">
+            <ion-icon aria-hidden="true" [icon]="backIcon" />
+          </button>
 
-            <div class="pantry-form-header__text">
-              <h1 class="pantry-form-header__title">Add/Edit Item</h1>
-              <p class="pantry-form-header__subtitle">Create a pantry item</p>
-            </div>
-
-            <button
-              type="button"
-              class="pantry-form-header__button pantry-form-header__button--icon"
-              aria-label="Scan item"
-            >
-              <ion-icon aria-hidden="true" [icon]="scanIcon" />
-            </button>
+          <div class="header-text">
+            <h1 class="header-title">{{ itemId() ? 'Edit item' : 'Add item' }}</h1>
+            <p class="header-subtitle">
+              {{ itemId() ? 'Update what is on your shelf' : 'Create a pantry item' }}
+            </p>
           </div>
+
+          <button type="button" class="header-btn" aria-label="Scan item">
+            <ion-icon aria-hidden="true" [icon]="scanIcon" />
+          </button>
         </header>
 
         <main class="pantry-form-body">
           @if (missingItem()) {
-            <app-empty-state-card
-              eyebrow="Missing item"
-              title="Item not found"
-              message="This pantry item no longer exists, so there is nothing to edit."
-              supportingText="Return to the pantry list to choose another item or create a new pantry entry."
-              actionLabel="Back to pantry"
-              [actionLink]="['/tabs/pantry']"
-            />
+            <section class="missing-card">
+              <span class="missing-emoji" aria-hidden="true">🫙</span>
+              <p class="missing-eyebrow">Missing item</p>
+              <h2>Item not found</h2>
+              <p>This pantry item no longer exists, so there is nothing to edit.</p>
+              <p class="missing-supporting">
+                Return to the pantry list to choose another item or create a new pantry entry.
+              </p>
+              <a class="ink-button" [routerLink]="['/tabs/pantry']">Back to pantry</a>
+            </section>
           } @else {
+            @let name = form.controls.name.value.trim();
+            @let category = form.controls.category.value;
+            @let stock = previewStockStatus();
+
             <form [formGroup]="form" class="pantry-form" (ngSubmit)="save()">
-              <section class="pantry-hero">
-                <img
-                  src="https://images.pexels.com/photos/264636/pexels-photo-264636.jpeg?auto=compress&cs=tinysrgb&w=1400"
-                  alt="Pantry organization"
-                />
-                <div class="pantry-hero__overlay"></div>
-                <div class="pantry-hero__content">
-                  <p class="pantry-hero__title">Essentials</p>
-                  <p class="pantry-hero__subtitle">Freshness first</p>
+              <!-- Live preview: how the item will look in the pantry -->
+              <section class="preview-card" aria-label="Item preview">
+                <div class="preview-dots" aria-hidden="true"></div>
+                <div class="preview-visual" [style.--tile]="tileColor(category)">
+                  @if (name) {
+                    <img
+                      [src]="{ name: name, category: category || null, imageUrl: existingItem()?.imageUrl ?? null } | pantryImage"
+                      [appFallbackImage]="{ name: name, category: category || null } | pantryImage: 'fallback'"
+                      [alt]="name"
+                    />
+                  } @else {
+                    <span aria-hidden="true">{{ category ? categoryEmoji[category] : '🧺' }}</span>
+                  }
+                </div>
+
+                <div class="preview-info">
+                  <p class="preview-eyebrow">{{ category ? categoryLabels[category] : 'Preview' }}</p>
+                  <p class="preview-name">{{ name || 'New item' }}</p>
+                  <p class="preview-qty">
+                    {{ form.controls.quantity.value | quantityLabel: form.controls.unit.value }}
+                  </p>
+                  <div class="preview-chips">
+                    <span class="chip chip--stock" [class]="'chip chip--stock is-' + stock">
+                      {{ stockLabels[stock] }}
+                    </span>
+                    <span class="chip">
+                      {{ form.controls.expiryDate.value | expiryStatus }}
+                    </span>
+                  </div>
                 </div>
               </section>
 
-              <section class="pantry-form-section">
-                <div class="app-premium-field">
-                  <label class="app-premium-label">Item Name</label>
-                  <div class="pantry-input-icon-wrap">
+              <!-- 1. Basics -->
+              <section class="form-card">
+                <header class="card-head">
+                  <span class="card-icon" aria-hidden="true">✏️</span>
+                  <div>
+                    <h2>The basics</h2>
+                    <p>What is it and where does it belong?</p>
+                  </div>
+                </header>
+
+                <div class="field">
+                  <label class="field-label" for="pantry-item-name">Item name</label>
+                  <div class="input-wrap">
                     <input
+                      id="pantry-item-name"
                       formControlName="name"
-                      class="app-premium-input"
+                      class="text-input"
                       placeholder="e.g. Organic Avocados"
                       type="text"
+                      autocomplete="off"
                     />
                     <ion-icon aria-hidden="true" [icon]="editIcon" />
                   </div>
                   @if (showError('name')) {
-                    <p class="app-error-text">{{ errorMessage('name') }}</p>
+                    <p class="field-error">{{ errorMessage('name') }}</p>
                   }
                 </div>
 
-                <div class="app-premium-field">
-                  <label class="app-premium-label">Category</label>
-                  <select formControlName="category" class="app-premium-select">
-                    <option value="" disabled>Select a category</option>
-                    @for (category of availableCategories(); track category) {
-                      <option [value]="category">{{ categoryLabels[category] }}</option>
+                <fieldset class="field">
+                  <legend class="field-label">Category</legend>
+                  <div class="category-grid" role="radiogroup" aria-label="Category">
+                    @for (option of availableCategories(); track option) {
+                      <label
+                        class="category-chip"
+                        [class.is-selected]="category === option"
+                        [style.--tile]="tileColor(option)"
+                      >
+                        <input
+                          type="radio"
+                          class="visually-hidden"
+                          formControlName="category"
+                          [value]="option"
+                        />
+                        <span class="category-chip__emoji" aria-hidden="true">{{ categoryEmoji[option] }}</span>
+                        {{ categoryLabels[option] }}
+                      </label>
                     }
-                  </select>
-                </div>
+                  </div>
+                  @if (showError('category')) {
+                    <p class="field-error">Pick a category for this item.</p>
+                  }
+                </fieldset>
               </section>
 
-              <section class="pantry-form-grid">
-                <div class="app-premium-field">
-                  <label class="app-premium-label">Quantity</label>
-                  <div class="pantry-stepper">
-                    <button type="button" (click)="decrementQuantity()">
+              <!-- 2. Stock -->
+              <section class="form-card">
+                <header class="card-head">
+                  <span class="card-icon" aria-hidden="true">📦</span>
+                  <div>
+                    <h2>Stock &amp; freshness</h2>
+                    <p>How much you have and when it expires.</p>
+                  </div>
+                </header>
+
+                <div class="field">
+                  <span class="field-label" id="pantry-qty-label">Quantity</span>
+                  <div class="stepper" role="group" aria-labelledby="pantry-qty-label">
+                    <button type="button" (click)="decrementQuantity()" aria-label="Decrease quantity">
                       <ion-icon aria-hidden="true" [icon]="minusIcon" />
                     </button>
-                    <span>{{ form.controls.quantity.value }}</span>
-                    <button type="button" (click)="incrementQuantity()">
+                    <p class="stepper__value" aria-live="polite">
+                      {{ form.controls.quantity.value }}
+                      <span>{{ form.controls.unit.value }}</span>
+                    </p>
+                    <button type="button" (click)="incrementQuantity()" aria-label="Increase quantity">
                       <ion-icon aria-hidden="true" [icon]="plusIcon" />
                     </button>
                   </div>
                 </div>
-                <div class="app-premium-field">
-                  <label class="app-premium-label pantry-form-label-with-icon"> Expiry Date </label>
-                  <div class="pantry-input-icon-wrap">
-                    <input formControlName="expiryDate" class="app-premium-input" type="date" />
-                    <ion-icon aria-hidden="true" [icon]="calendarIcon" />
+
+                <div class="field-row">
+                  <div class="field">
+                    <label class="field-label" for="pantry-expiry">Expiry date</label>
+                    <div class="input-wrap">
+                      <input id="pantry-expiry" formControlName="expiryDate" class="text-input" type="date" />
+                      <ion-icon aria-hidden="true" [icon]="calendarIcon" />
+                    </div>
+                  </div>
+
+                  <div class="field">
+                    <label class="field-label" for="pantry-min">Low-stock alert at</label>
+                    <div class="input-wrap">
+                      <input
+                        id="pantry-min"
+                        formControlName="minQuantity"
+                        class="text-input"
+                        placeholder="1"
+                        type="number"
+                        inputmode="decimal"
+                      />
+                      <span class="input-suffix">{{ form.controls.unit.value }}</span>
+                    </div>
+                    @if (showError('minQuantity')) {
+                      <p class="field-error">{{ errorMessage('minQuantity') }}</p>
+                    }
                   </div>
                 </div>
               </section>
 
-              <hr class="pantry-form-divider" />
+              <!-- 3. Shopping -->
+              <section class="form-card">
+                <header class="card-head">
+                  <span class="card-icon" aria-hidden="true">🛍️</span>
+                  <div>
+                    <h2>Where to buy</h2>
+                    <p>Choose the shopping tabs this item appears in.</p>
+                  </div>
+                </header>
 
-              <section class="pantry-form-section">
-                <div class="app-premium-field">
-                  <label class="app-premium-label">Min. Threshold</label>
-                  <input
-                    formControlName="minQuantity"
-                    class="app-premium-input"
-                    placeholder="1"
-                    type="number"
-                  />
+                <div class="toggle-list">
+                  <div class="toggle-row">
+                    <span class="toggle-emoji" aria-hidden="true">🥨</span>
+                    <span class="toggle-text">
+                      <span class="toggle-label">German Store</span>
+                      <span class="toggle-description">Show this item under the German Store shopping tab</span>
+                    </span>
+                    <ion-toggle formControlName="germanStore" aria-label="German Store"></ion-toggle>
+                  </div>
+
+                  <div class="toggle-row">
+                    <span class="toggle-emoji" aria-hidden="true">🍛</span>
+                    <span class="toggle-text">
+                      <span class="toggle-label">Indian Store</span>
+                      <span class="toggle-description">Show this item under the Indian Store shopping tab</span>
+                    </span>
+                    <ion-toggle formControlName="indianStore" aria-label="Indian Store"></ion-toggle>
+                  </div>
+
+                  <div class="toggle-row">
+                    <span class="toggle-emoji" aria-hidden="true">🔁</span>
+                    <span class="toggle-text">
+                      <span class="toggle-label">Auto-add to shopping list</span>
+                      <span class="toggle-description">When stock falls below threshold</span>
+                    </span>
+                    <ion-toggle
+                      formControlName="autoAddToShoppingList"
+                      aria-label="Auto-add to shopping list"
+                    ></ion-toggle>
+                  </div>
                 </div>
+              </section>
 
-                <section class="app-premium-toggle">
-                  <div class="toggle-info">
-                    <span class="toggle-label">German Store</span>
-                    <span class="toggle-description"
-                      >Show this item under the German Store shopping tab</span
-                    >
+              <!-- 4. Notes -->
+              <section class="form-card">
+                <header class="card-head">
+                  <span class="card-icon" aria-hidden="true">📝</span>
+                  <div>
+                    <h2>Notes</h2>
+                    <p>Brands, sizes or anything worth remembering.</p>
                   </div>
-                  <ion-toggle formControlName="germanStore" color="primary"></ion-toggle>
-                </section>
+                </header>
 
-                <section class="app-premium-toggle">
-                  <div class="toggle-info">
-                    <span class="toggle-label">Indian Store</span>
-                    <span class="toggle-description"
-                      >Show this item under the Indian Store shopping tab</span
-                    >
-                  </div>
-                  <ion-toggle formControlName="indianStore" color="primary"></ion-toggle>
-                </section>
-
-                <section class="app-premium-toggle">
-                  <div class="toggle-info">
-                    <span class="toggle-label">Auto-add to shopping list</span>
-                    <span class="toggle-description">When stock falls below threshold</span>
-                  </div>
-                  <ion-toggle formControlName="autoAddToShoppingList" color="primary"></ion-toggle>
-                </section>
-
-                <section class="app-premium-field">
-                  <label class="app-premium-label">Notes</label>
+                <div class="field">
+                  <label class="visually-hidden" for="pantry-notes">Notes</label>
                   <textarea
+                    id="pantry-notes"
                     formControlName="notes"
-                    class="app-premium-textarea"
+                    class="text-input text-input--area"
                     placeholder="Add specific brands or preferences..."
                     rows="4"
                   ></textarea>
-                </section>
-
-                @if (itemId()) {
-                  <button type="button" (click)="delete()" class="app-button--premium-outline pantry-delete">
-                    <ion-icon aria-hidden="true" [icon]="deleteIcon" />
-                    Delete Item
-                  </button>
-                }
+                  <p class="field-hint" [class.is-over]="form.controls.notes.value.length > 200">
+                    {{ form.controls.notes.value.length }}/200
+                  </p>
+                  @if (showError('notes')) {
+                    <p class="field-error">{{ errorMessage('notes') }}</p>
+                  }
+                </div>
               </section>
 
-              <footer class="pantry-bottom-bar">
-                <button
-                  type="button"
-                  class="app-button--premium-outline pantry-bottom-bar__button pantry-bottom-bar__button--cancel"
-                  (click)="goBack()"
-                >
-                  Cancel
+              @if (itemId()) {
+                <button type="button" (click)="delete()" class="delete-button">
+                  <ion-icon aria-hidden="true" [icon]="deleteIcon" />
+                  Delete Item
                 </button>
+              }
+
+              <footer class="action-bar">
+                <button type="button" class="action-bar__cancel" (click)="goBack()">Cancel</button>
                 <button
                   type="submit"
+                  class="action-bar__save"
                   [disabled]="form.invalid || isSaving()"
-                  class="app-button--premium-primary pantry-bottom-bar__button pantry-bottom-bar__button--primary"
                 >
-                  {{ isSaving() ? 'Saving...' : 'Save' }}
+                  {{ isSaving() ? 'Saving...' : itemId() ? 'Save changes' : 'Add to pantry' }}
                 </button>
               </footer>
             </form>
@@ -234,378 +333,664 @@ import { ShoppingListStateService } from '../../shopping-list/services/shopping-
   `,
   styles: [
     `
+      /* Add/Edit item — "Citrus & Ink". Tokens (--h-*) come from .theme-citrus
+         (src/theme/citrus.scss), shared with Home and Pantry. */
       :host {
         display: flex;
         flex-direction: column;
         height: 100%;
-        background: var(--app-background);
+        background: var(--h-canvas);
       }
 
-      .pantry-form-content {
-        --background: var(--app-background);
+      .pantry-form-content::part(background) {
+        background: var(--h-canvas);
+      }
+
+      .visually-hidden {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip-path: inset(50%);
+        white-space: nowrap;
+      }
+
+      ion-icon {
+        flex-shrink: 0;
       }
 
       .pantry-form-shell {
-        width: min(100%, 38rem);
+        width: min(100%, 40rem);
         margin: 0 auto;
         min-height: 100%;
         display: flex;
         flex-direction: column;
       }
 
+      /* ---------------- Header ---------------- */
+
       .pantry-form-header {
         position: sticky;
         top: 0;
         z-index: 20;
-        padding: calc(env(safe-area-inset-top, 0) + 0.75rem) 1rem 0.75rem;
-        background: #f8f9ff;
-        border-bottom: 1px solid #dce3db;
-      }
-
-      .pantry-form-header__inner {
         display: grid;
-        grid-template-columns: 3rem minmax(0, 1fr) 3rem;
+        grid-template-columns: 44px minmax(0, 1fr) 44px;
         align-items: center;
-        gap: 0.75rem;
+        gap: 12px;
+        padding: calc(env(safe-area-inset-top, 0px) + 12px) var(--h-gutter) 12px;
+        background: color-mix(in srgb, var(--h-canvas) 88%, transparent);
+        backdrop-filter: blur(18px);
       }
 
-      .pantry-form-header__text {
+      .header-btn {
+        width: 44px;
+        height: 44px;
+        border: 1px solid var(--h-line);
+        border-radius: 50%;
+        background: var(--h-surface);
+        color: var(--h-ink);
         display: grid;
-        text-align: left;
+        place-items: center;
+        font-size: 20px;
       }
 
-      .pantry-form-header__title {
+      .header-btn:active {
+        transform: scale(0.93);
+      }
+
+      .header-text {
+        text-align: center;
+      }
+
+      .header-title {
         margin: 0;
-        font-family: 'Plus Jakarta Sans', 'Manrope', sans-serif;
-        font-size: clamp(1.55rem, 5.4vw, 2rem);
+        font-size: 1.3rem;
         font-weight: 800;
-        line-height: 1.15;
-        letter-spacing: -0.01em;
-        color: #0a8f5b;
+        letter-spacing: -0.03em;
+        color: var(--h-ink);
       }
 
-      .pantry-form-header__subtitle {
-        margin: 0.25rem 0 0;
-        font-family: Inter, sans-serif;
-        font-size: 0.9rem;
-        line-height: 1.25;
-        color: #3c4a42;
+      .header-subtitle {
+        margin: 2px 0 0;
+        font-size: 0.76rem;
+        font-weight: 600;
+        color: var(--h-muted);
       }
 
-      .pantry-form-header__button {
-        width: 3rem;
-        height: 3rem;
-        border: none;
-        border-radius: 999px;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        transition:
-          transform 0.2s ease,
-          box-shadow 0.2s ease,
-          background-color 0.2s ease;
-      }
-
-      .pantry-form-header__button ion-icon {
-        font-size: 1.35rem;
-      }
-
-      .pantry-form-header__button--secondary {
-        background: transparent;
-        color: #006c49;
-      }
-
-      .pantry-form-header__button--icon {
-        background: transparent;
-        color: #3c4a42;
-      }
+      /* ---------------- Body ---------------- */
 
       .pantry-form-body {
         flex: 1;
-        padding: 1rem;
+        padding: 4px var(--h-gutter) 0;
       }
 
       .pantry-form {
         display: grid;
-        gap: var(--app-space-5);
+        gap: 16px;
       }
 
-      .pantry-form-section {
-        display: grid;
-        gap: 1.5rem;
-      }
-
-      .pantry-form-grid {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 0.75rem;
-      }
-
-      .pantry-form-divider {
-        margin: 0;
-        border: 0;
-        border-top: 1px solid rgba(60, 74, 66, 0.2);
-      }
-
-      .pantry-form-label-with-icon {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.5rem;
-      }
-
-      .pantry-form-label-with-icon ion-icon {
-        font-size: 1rem;
-        color: var(--app-text-secondary);
-      }
-
-      .app-premium-label {
-        margin-left: 0.25rem;
-        font-family: Inter, sans-serif;
-        font-size: 0.75rem;
-        line-height: 1;
-        letter-spacing: 0.02em;
-        font-weight: 600;
-        color: #3c4a42;
-      }
-
-      .app-premium-input,
-      .app-premium-select,
-      .app-premium-textarea {
-        width: 100%;
-        min-height: 3.5rem;
-        border-radius: 0.75rem;
-        border: 1px solid rgba(108, 122, 113, 0.3);
-        background: #ffffff;
-        box-shadow: none;
-        color: #0b1c30;
-        font-family: Inter, sans-serif;
-        font-size: 1rem;
-      }
-
-      .app-premium-input::placeholder,
-      .app-premium-textarea::placeholder {
-        color: rgba(60, 74, 66, 0.5);
-      }
-
-      .app-premium-select {
-        appearance: none;
-        padding-right: 2.5rem;
-        background-image:
-          linear-gradient(45deg, transparent 50%, #6c7a71 50%),
-          linear-gradient(135deg, #6c7a71 50%, transparent 50%);
-        background-position:
-          calc(100% - 18px) calc(50% - 2px),
-          calc(100% - 12px) calc(50% - 2px);
-        background-size:
-          6px 6px,
-          6px 6px;
-        background-repeat: no-repeat;
-      }
-
-      .app-premium-textarea {
-        min-height: 8rem;
-        padding-block: 1rem;
-      }
-
-      .app-segmented-control {
-        padding: 0.35rem;
-        border-radius: 0.75rem;
-        background: rgba(16, 185, 129, 0.08);
-      }
-
-      .app-segmented-control button {
-        min-height: 2.75rem;
-        border-radius: 0.6rem;
-        font-size: 0.9rem;
-      }
-
-      .app-premium-toggle {
-        gap: var(--app-space-4);
-        padding: 1rem;
-        border-radius: 0.75rem;
-        background: #eff4ff;
-        border-color: #d3e4fe;
-      }
-
-      .app-premium-toggle .toggle-info {
-        gap: 0.25rem;
-      }
-
-      .app-premium-toggle .toggle-label {
-        font-size: 1rem;
-        color: #0b1c30;
-      }
-
-      .app-premium-toggle .toggle-description {
-        font-size: 0.92rem;
-      }
-
-      .app-button--premium-primary,
-      .app-button--premium-outline {
-        min-height: 3.5rem;
-        border-radius: 999px;
-        font-size: 1rem;
-      }
-
-      .app-button--premium-primary:disabled {
-        opacity: 0.6;
-      }
-
-      .pantry-hero {
+      /* Live preview (ink hero) */
+      .preview-card {
         position: relative;
-        border-radius: 1rem;
+        isolation: isolate;
         overflow: hidden;
-        height: clamp(9rem, 34vw, 13rem);
+        display: grid;
+        grid-template-columns: 104px minmax(0, 1fr);
+        align-items: center;
+        gap: 16px;
+        padding: 16px;
+        border-radius: 28px;
+        color: #ffffff;
+        background:
+          radial-gradient(70% 90% at 100% 100%, rgba(255, 106, 61, 0.5), transparent 70%),
+          var(--h-hero-bg);
+        outline: 1px solid var(--h-hero-border);
+        outline-offset: -1px;
+        box-shadow: 0 24px 40px -24px rgba(22, 20, 29, 0.6);
       }
 
-      .pantry-hero img {
+      .preview-dots {
+        position: absolute;
+        z-index: -1;
+        inset: 0 0 auto auto;
+        width: 50%;
+        height: 80%;
+        background-image: radial-gradient(rgba(255, 255, 255, 0.16) 1.2px, transparent 1.4px);
+        background-size: 14px 14px;
+        mask-image: linear-gradient(225deg, #000 10%, transparent 70%);
+      }
+
+      .preview-visual {
+        width: 104px;
+        height: 104px;
+        border-radius: 24px;
+        overflow: hidden;
+        display: grid;
+        place-items: center;
+        background: var(--tile);
+        font-size: 3rem;
+        transform: rotate(-4deg);
+        box-shadow: 0 12px 24px -12px rgba(0, 0, 0, 0.6);
+      }
+
+      .preview-visual img {
         width: 100%;
         height: 100%;
         object-fit: cover;
+        color: transparent;
       }
 
-      .pantry-hero__overlay {
-        position: absolute;
-        inset: 0;
-        background: linear-gradient(180deg, rgba(0, 0, 0, 0) 45%, rgba(0, 0, 0, 0.48) 100%);
+      .preview-info {
+        min-width: 0;
+        display: grid;
+        justify-items: start;
+        gap: 2px;
       }
 
-      .pantry-hero__content {
-        position: absolute;
-        left: 1rem;
-        bottom: 1rem;
+      .preview-eyebrow {
+        margin: 0 0 4px;
+        padding: 3px 9px;
+        border-radius: 8px;
+        background: var(--h-lilac);
+        color: #16141d;
+        font-size: 0.62rem;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
       }
 
-      .pantry-hero__title {
+      .preview-name {
+        max-width: 100%;
         margin: 0;
-        color: #ffffff;
-        font-family: 'Plus Jakarta Sans', Inter, sans-serif;
-        font-size: 1.5rem;
+        font-family: var(--h-display);
+        font-size: 1.4rem;
+        font-weight: 800;
+        letter-spacing: -0.03em;
+        line-height: 1.15;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .preview-qty {
+        margin: 0;
+        font-family: var(--h-display);
+        font-size: 0.95rem;
         font-weight: 700;
-        line-height: 1.2;
+        color: var(--h-sun);
       }
 
-      .pantry-hero__subtitle {
-        margin: 0.2rem 0 0;
-        color: rgba(255, 255, 255, 0.82);
-        font-family: Inter, sans-serif;
-        font-size: 0.875rem;
+      .preview-chips {
+        margin-top: 8px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
       }
 
-      .pantry-input-icon-wrap {
-        position: relative;
+      .chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        min-height: 24px;
+        padding: 0 9px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.12);
+        font-size: 0.7rem;
+        font-weight: 700;
+        white-space: nowrap;
       }
 
-      .pantry-input-icon-wrap ion-icon {
-        position: absolute;
-        right: 1rem;
-        top: 50%;
-        transform: translateY(-50%);
-        color: #6c7a71;
+      .chip--stock::before {
+        content: '';
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--dot, #4cc38a);
+      }
+
+      .chip--stock.is-low-stock { --dot: #ffb224; }
+      .chip--stock.is-out-of-stock { --dot: #ff6369; }
+
+      /* Section cards */
+      .form-card {
+        display: grid;
+        gap: 18px;
+        padding: 18px;
+        border-radius: 26px;
+        border: 1px solid var(--h-line);
+        background: var(--h-surface);
+        box-shadow: var(--h-shadow);
+      }
+
+      .card-head {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .card-icon {
+        width: 42px;
+        height: 42px;
+        flex-shrink: 0;
+        border-radius: 14px;
+        display: grid;
+        place-items: center;
+        background: var(--h-tile-3);
         font-size: 1.25rem;
+        transform: rotate(-6deg);
+      }
+
+      .card-head h2 {
+        margin: 0;
+        font-size: 1.08rem;
+        font-weight: 800;
+        letter-spacing: -0.02em;
+        color: var(--h-ink);
+      }
+
+      .card-head p {
+        margin: 2px 0 0;
+        font-size: 0.78rem;
+        color: var(--h-muted);
+      }
+
+      /* Fields */
+      .field {
+        min-width: 0;
+        margin: 0;
+        padding: 0;
+        border: 0;
+        display: grid;
+        gap: 8px;
+      }
+
+      .field-label {
+        padding: 0;
+        font-size: 0.78rem;
+        font-weight: 700;
+        color: var(--h-ink-soft);
+      }
+
+      .field-row {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+      }
+
+      .input-wrap {
+        position: relative;
+        display: flex;
+        align-items: center;
+      }
+
+      .input-wrap > ion-icon,
+      .input-suffix {
+        position: absolute;
+        right: 14px;
+        color: var(--h-muted);
+        font-size: 18px;
         pointer-events: none;
       }
 
-      .pantry-stepper {
-        min-height: 3.5rem;
-        border-radius: 0.75rem;
-        border: 1px solid rgba(108, 122, 113, 0.3);
-        background: #ffffff;
-        padding: 0.25rem;
-        display: grid;
-        align-items: center;
-        grid-template-columns: 2.2rem minmax(0, 1fr) 2.2rem;
-      }
-
-      .pantry-stepper button {
-        width: 2.2rem;
-        height: 2.2rem;
-        border: 0;
-        border-radius: 0.7rem;
-        background: #f0f2fb;
-        color: #006c49;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-      }
-
-      .pantry-stepper span {
-        text-align: center;
-        font-family: 'Plus Jakarta Sans', Inter, sans-serif;
-        font-size: 1rem;
-        font-weight: 700;
-        color: #0b1c30;
-      }
-
-      .pantry-delete {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        gap: 0.5rem;
-      }
-
-      .pantry-bottom-bar {
-        background: #ffffff;
-        border-top: 1px solid rgba(108, 122, 113, 0.2);
-        width: 100%;
-        margin-top: 0.25rem;
-        padding-top: 0.75rem;
-        display: grid;
-        grid-template-columns: 1fr 1.4fr;
-        gap: 0.75rem;
-      }
-
-      .pantry-bottom-bar__button {
-        width: 100%;
-        min-height: 3.25rem;
+      .input-suffix {
+        font-size: 0.78rem;
         font-weight: 700;
       }
 
-      .pantry-bottom-bar__button--primary {
-        background: #006c49;
+      .text-input {
+        width: 100%;
+        min-width: 0;
+        min-height: 52px;
+        padding: 0 44px 0 16px;
+        border: 1px solid var(--h-line);
+        border-radius: 16px;
+        background: var(--h-canvas);
+        color: var(--h-ink);
+        font-size: 0.95rem;
+        font-weight: 600;
+      }
+
+      /* Keep the native date picker working, but show our icon in its place. */
+      .text-input[type='date'] {
+        padding-right: 40px;
+        font-size: 0.88rem;
+      }
+
+      .text-input::-webkit-calendar-picker-indicator {
+        position: absolute;
+        right: 0;
+        width: 44px;
+        height: 100%;
+        opacity: 0;
+        cursor: pointer;
+      }
+
+      .text-input::placeholder {
+        color: var(--h-muted);
+        font-weight: 500;
+      }
+
+      .text-input--area {
+        min-height: 112px;
+        padding: 14px 16px;
+        resize: vertical;
+      }
+
+      /* Beat the global input:not(…):focus rule (specificity 0,5,1). */
+      :host .field .text-input:focus {
+        outline: none;
+        border-color: var(--h-accent);
+        box-shadow: 0 0 0 4px var(--h-accent-glow);
+      }
+
+      .field-hint {
+        margin: -2px 4px 0 0;
+        justify-self: end;
+        font-size: 0.72rem;
+        font-weight: 700;
+        color: var(--h-muted);
+      }
+
+      .field-hint.is-over,
+      .field-error {
+        color: var(--h-danger);
+      }
+
+      .field-error {
+        margin: 0;
+        font-size: 0.78rem;
+        font-weight: 700;
+      }
+
+      /* Category chips (radio group) */
+      .category-grid {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+
+      legend.field-label {
+        margin-bottom: 8px;
+      }
+
+      .category-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        min-height: 36px;
+        padding: 0 12px 0 4px;
+        border: 1px solid var(--h-line);
+        border-radius: 999px;
+        background: var(--h-canvas);
+        color: var(--h-ink-soft);
+        font-size: 0.76rem;
+        font-weight: 700;
+        cursor: pointer;
+        transition: background-color 160ms ease, color 160ms ease, transform 160ms ease;
+      }
+
+      .category-chip__emoji {
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        background: var(--tile);
+        font-size: 0.9rem;
+      }
+
+      .category-chip.is-selected {
+        background: var(--h-btn-bg);
+        border-color: var(--h-btn-bg);
+        color: var(--h-btn-fg);
+      }
+
+      .category-chip:has(input:focus-visible) {
+        outline: 3px solid var(--h-accent-glow);
+        outline-offset: 2px;
+      }
+
+      .category-chip:active {
+        transform: scale(0.96);
+      }
+
+      /* Quantity stepper */
+      .stepper {
+        display: grid;
+        grid-template-columns: 52px minmax(0, 1fr) 52px;
+        align-items: center;
+        gap: 8px;
+        padding: 6px;
+        border-radius: 22px;
+        background: var(--h-canvas);
+        border: 1px solid var(--h-line);
+      }
+
+      .stepper button {
+        height: 52px;
+        border: none;
+        border-radius: 17px;
+        display: grid;
+        place-items: center;
+        font-size: 22px;
+        background: var(--h-surface);
+        color: var(--h-ink);
+        box-shadow: var(--h-shadow);
+        transition: transform 140ms ease;
+      }
+
+      .stepper button:last-child {
+        background: var(--h-accent);
         color: #ffffff;
       }
 
-      .pantry-bottom-bar__button--cancel {
-        background: #ffffff;
-        border: 1px solid rgba(108, 122, 113, 0.45);
-        color: #274139;
+      .stepper button:active {
+        transform: scale(0.9);
       }
 
-      .app-error-text {
+      .stepper__value {
         margin: 0;
-        padding-inline: 0.125rem;
+        text-align: center;
+        font-family: var(--h-display);
+        font-size: 1.7rem;
+        font-weight: 800;
+        letter-spacing: -0.03em;
+        color: var(--h-ink);
       }
 
-      @media (max-width: 420px) {
-        .pantry-form-body {
-          padding-inline: 1rem;
-        }
-
-        .pantry-stepper {
-          grid-template-columns: 2rem minmax(0, 1fr) 2rem;
-        }
-
-        .pantry-stepper button {
-          width: 2rem;
-          height: 2rem;
-        }
+      .stepper__value span {
+        font-size: 0.85rem;
+        font-weight: 700;
+        color: var(--h-muted);
       }
 
-      @media (max-width: 360px) {
-        .pantry-form-header__inner {
-          grid-template-columns: 2.75rem minmax(0, 1fr) 2.75rem;
-          gap: 0.625rem;
-        }
+      /* Store toggles */
+      .toggle-list {
+        display: grid;
+        gap: 8px;
+      }
 
-        .pantry-form-grid {
+      .toggle-row {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 10px 12px 10px 10px;
+        border-radius: 20px;
+        background: var(--h-canvas);
+      }
+
+      .toggle-emoji {
+        width: 40px;
+        height: 40px;
+        flex-shrink: 0;
+        border-radius: 14px;
+        display: grid;
+        place-items: center;
+        background: var(--h-surface);
+        font-size: 1.2rem;
+      }
+
+      .toggle-text {
+        flex: 1;
+        min-width: 0;
+        display: grid;
+        gap: 2px;
+      }
+
+      .toggle-label {
+        font-size: 0.92rem;
+        font-weight: 700;
+        color: var(--h-ink);
+      }
+
+      .toggle-description {
+        font-size: 0.76rem;
+        line-height: 1.35;
+        color: var(--h-muted);
+      }
+
+      ion-toggle {
+        --track-background: color-mix(in srgb, var(--h-muted) 35%, transparent);
+        --track-background-checked: var(--h-accent);
+        --handle-background: #ffffff;
+        --handle-background-checked: #ffffff;
+      }
+
+      /* Delete (edit mode) */
+      .delete-button {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        min-height: 52px;
+        border: 1.5px dashed color-mix(in srgb, var(--h-danger) 45%, transparent);
+        border-radius: 999px;
+        background: var(--h-danger-surface);
+        color: var(--h-danger);
+        font-size: 0.92rem;
+        font-weight: 800;
+      }
+
+      /* Sticky action bar */
+      .action-bar {
+        position: sticky;
+        bottom: 0;
+        z-index: 10;
+        margin: 0 calc(var(--h-gutter) * -1);
+        padding: 12px var(--h-gutter) calc(12px + env(safe-area-inset-bottom, 0px));
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1.7fr);
+        gap: 10px;
+        background: color-mix(in srgb, var(--h-canvas) 88%, transparent);
+        backdrop-filter: blur(18px);
+        border-top: 1px solid var(--h-line);
+      }
+
+      .action-bar button {
+        min-height: 54px;
+        border-radius: 999px;
+        font-size: 0.95rem;
+        font-weight: 800;
+        transition: transform 140ms ease, opacity 160ms ease;
+      }
+
+      .action-bar button:active:not(:disabled) {
+        transform: scale(0.97);
+      }
+
+      .action-bar__cancel {
+        border: 1px solid var(--h-line);
+        background: var(--h-surface);
+        color: var(--h-ink);
+      }
+
+      .action-bar__save {
+        border: none;
+        background: var(--h-accent);
+        color: #ffffff;
+        box-shadow: 0 12px 24px -12px var(--h-accent-glow);
+      }
+
+      .action-bar__save:disabled {
+        opacity: 0.45;
+        box-shadow: none;
+      }
+
+      /* Missing item */
+      .missing-card {
+        display: grid;
+        justify-items: center;
+        gap: 8px;
+        margin-top: 12px;
+        padding: 32px 20px;
+        border-radius: 28px;
+        background: var(--h-surface);
+        border: 2px dashed var(--h-line);
+        text-align: center;
+      }
+
+      .missing-emoji {
+        width: 64px;
+        height: 64px;
+        margin-bottom: 6px;
+        border-radius: 22px;
+        display: grid;
+        place-items: center;
+        font-size: 2rem;
+        background: var(--h-tile-3);
+        transform: rotate(-6deg);
+      }
+
+      .missing-card .missing-eyebrow {
+        font-size: 0.7rem;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--h-accent);
+      }
+
+      .missing-card h2 {
+        margin: 0;
+        font-size: 1.3rem;
+        font-weight: 800;
+        color: var(--h-ink);
+      }
+
+      .missing-card p {
+        margin: 0;
+        color: var(--h-ink-soft);
+        font-size: 0.9rem;
+      }
+
+      .missing-card .missing-supporting {
+        color: var(--h-muted);
+        font-size: 0.82rem;
+      }
+
+      .ink-button {
+        margin-top: 10px;
+        display: inline-flex;
+        align-items: center;
+        min-height: 46px;
+        padding: 0 20px;
+        border-radius: 999px;
+        background: var(--h-btn-bg);
+        color: var(--h-btn-fg);
+        font-size: 0.9rem;
+        font-weight: 800;
+      }
+
+      @media (max-width: 359px) {
+        .field-row {
           grid-template-columns: 1fr;
         }
       }
 
-      @media (min-width: 640px) {
-        .pantry-form-body {
-          padding-inline: 2rem;
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          transition: none !important;
         }
       }
     `,
@@ -640,6 +1025,12 @@ export class PantryFormPage {
   protected readonly deleteIcon = trashOutline;
   protected readonly categories = CATEGORY_FILTER_OPTIONS.map((option) => option.value);
   protected readonly categoryLabels = CATEGORY_LABELS;
+  protected readonly categoryEmoji = CATEGORY_EMOJI;
+  protected readonly stockLabels: Record<PantryStockStatus, string> = {
+    'in-stock': 'In stock',
+    'low-stock': 'Low stock',
+    'out-of-stock': 'Out of stock',
+  };
   protected readonly isSaving = signal(false);
   protected readonly submitted = signal(false);
   private readonly initializedFormKey = signal<string | undefined>(undefined);
@@ -782,6 +1173,24 @@ export class PantryFormPage {
         this.form.controls.category.setValue(mappedCategory, { emitEvent: false });
       }
     });
+  }
+
+  /** Stock status for the live preview, using the same rule as the pantry cards. */
+  protected previewStockStatus(): PantryStockStatus {
+    const { quantity, minQuantity, unit, expiryDate } = this.form.getRawValue();
+    return getPantryStockStatus(
+      {
+        quantity: Number(quantity) || 0,
+        minQuantity: Number(minQuantity) || 0,
+        unit,
+        expiryDate: expiryDate || null,
+      },
+      this.settingsService.settings().defaultLowStockThreshold,
+    );
+  }
+
+  protected tileColor(category: PantryCategory | ''): string {
+    return categoryTileColor(category);
   }
 
   protected showError(controlName: keyof typeof this.form.controls): boolean {

@@ -6,6 +6,7 @@ import { IonContent, IonIcon, IonModal } from '@ionic/angular/standalone';
 import {
   addOutline,
   alarmOutline,
+  arrowBackOutline,
   calendarOutline,
   cartOutline,
   checkmarkCircleOutline,
@@ -20,6 +21,7 @@ import {
   walletOutline
 } from 'ionicons/icons';
 
+import { NavigationHistoryService } from '../../../core/services/navigation-history.service';
 import { PantryStateService } from '../../pantry/services/pantry-state.service';
 import {
   CompletedReminderRecord,
@@ -55,40 +57,33 @@ type ReminderActionKey =
 @Component({
   selector: 'app-reminders-page',
   standalone: true,
+  host: { class: 'theme-citrus' },
   imports: [IonContent, IonIcon, IonModal, ReactiveFormsModule],
   template: `
     <ion-content [fullscreen]="true" class="reminders-content">
       <div class="reminders-page">
-        <header class="hero">
-          <div class="hero__top">
-            <div class="hero__title-block">
-              <div class="hero__icon-shell">
-                <ion-icon aria-hidden="true" [icon]="bellIcon" class="hero__icon" />
-              </div>
-              <div class="hero__copy">
-                <h1>Reminders</h1>
-                <p>Manage grocery reminders across active, snoozed, and completed states.</p>
-              </div>
-            </div>
+        <header class="page-header">
+          <button type="button" class="icon-btn" (click)="goBack()" aria-label="Back">
+            <ion-icon aria-hidden="true" [icon]="backIcon" />
+          </button>
+          <div class="page-header__text">
+            <h1>Reminders</h1>
+            <p>Expiry, stock, budget &amp; cart alerts</p>
           </div>
+          <span class="icon-btn icon-btn--ghost" aria-hidden="true"></span>
+        </header>
 
-          <section class="stats-panel" aria-label="Reminder overview">
-            @for (card of summaryCards(); track card.value) {
-              <button
-                type="button"
-                class="stat-tile"
-                [class.stat-tile--active]="activeCategory() === card.value"
-                [class]="'theme-' + themeClass(card.value)"
-                (click)="activeCategory.set(card.value)"
-              >
-                <span class="stat-tile__icon-wrap">
-                  <ion-icon [icon]="tabIcon(card.value)" />
-                </span>
-                <strong>{{ card.count }}</strong>
-                <span>{{ card.label }}</span>
-              </button>
+        <section class="hero" aria-label="Reminder overview">
+          <div class="hero-dots" aria-hidden="true"></div>
+          <p class="hero__eyebrow">Reminder centre</p>
+          <h2 class="hero__title">
+            @if (stateCount('ACTIVE') > 0) {
+              <span class="hero__highlight">{{ stateCount('ACTIVE') }}</span>
+              {{ stateCount('ACTIVE') === 1 ? 'reminder needs' : 'reminders need' }} you.
+            } @else {
+              You're all <span class="hero__highlight">caught up.</span>
             }
-          </section>
+          </h2>
 
           <nav class="state-tabs" aria-label="Reminder status tabs">
             @for (tab of stateTabs; track tab.value) {
@@ -96,26 +91,31 @@ type ReminderActionKey =
                 type="button"
                 class="state-tab"
                 [class.state-tab--active]="activeState() === tab.value"
+                [attr.aria-pressed]="activeState() === tab.value"
                 (click)="selectState(tab.value)"
               >
                 {{ tab.label }} ({{ stateCount(tab.value) }})
               </button>
             }
           </nav>
+        </section>
 
-          <nav class="filter-row" aria-label="Reminder categories">
-            @for (tab of categoryTabs; track tab.value) {
-              <button
-                type="button"
-                class="filter-chip"
-                [class.filter-chip--active]="activeCategory() === tab.value"
-                (click)="activeCategory.set(tab.value)"
-              >
-                {{ tab.label }}
-              </button>
-            }
-          </nav>
-        </header>
+        <nav class="stats-panel" aria-label="Reminder categories">
+          @for (card of summaryCards(); track card.value) {
+            <button
+              type="button"
+              class="stat-tile"
+              [class]="'stat-tile theme-' + themeClass(card.value)"
+              [class.stat-tile--active]="activeCategory() === card.value"
+              [attr.aria-pressed]="activeCategory() === card.value"
+              (click)="activeCategory.set(card.value)"
+            >
+              <span class="stat-tile__emoji" aria-hidden="true">{{ typeEmoji(card.value) }}</span>
+              <strong>{{ card.count }}</strong>
+              <span class="stat-tile__label">{{ card.label }}</span>
+            </button>
+          }
+        </nav>
 
         <main class="reminders-main">
           <div class="section-head">
@@ -128,63 +128,58 @@ type ReminderActionKey =
                 (click)="toggleSortOrder()"
               >
                 <span>Sort by: {{ sortOrderLabel() }}</span>
-                <ion-icon [icon]="chevronDownIcon" />
+                <ion-icon aria-hidden="true" [icon]="chevronDownIcon" />
               </button>
             }
           </div>
 
           @if (activeState() === 'ACTIVE') {
             @if (activeReminders().length === 0) {
-              <section class="empty-state-card empty-state-card--active">
+              <section class="empty-state-card">
+                <span class="empty-state-card__emoji" aria-hidden="true">🎉</span>
                 <h3>{{ emptyStateTitle() }}</h3>
                 <p>{{ emptyStateMessage() }}</p>
               </section>
             } @else {
               <section class="card-stack">
                 @for (reminder of activeReminders(); track reminder.id) {
-                  <article class="reminder-card" [class]="'theme-' + themeClass(reminder.type)">
-                    <div class="reminder-card__accent"></div>
-                    <div class="reminder-card__body">
-                      <div class="reminder-card__top">
-                        <div class="reminder-card__identity">
-                          <div class="reminder-card__icon-shell">
-                            <ion-icon [icon]="typeIcon(reminder.type)" />
-                          </div>
-
-                          <div class="reminder-card__copy">
-                            <p class="reminder-card__eyebrow">{{ labelForType(reminder.type) }}</p>
-                            <h3>{{ reminder.title }}</h3>
-                            <p class="reminder-card__description">{{ activeDescription(reminder) }}</p>
-
-                            @if (dueLabel(reminder); as dueInfo) {
-                              <p class="reminder-card__meta">
-                                <ion-icon [icon]="calendarIcon" />
-                                <span>{{ dueInfo }}</span>
-                              </p>
-                            }
-                          </div>
-                        </div>
-
-                        <div class="reminder-card__status-col">
-                          <span class="status-pill" [class]="'status-pill--' + themeClass(reminder.type)">
-                            {{ activeStatusChip(reminder) }}
-                          </span>
-                        </div>
-                      </div>
-
-                      <div class="action-grid">
-                        @for (action of activeActions(reminder); track action) {
-                          <button
-                            type="button"
-                            class="action-btn"
-                            [class.action-btn--primary]="isPrimaryActiveAction(reminder, action)"
-                            (click)="handleActiveAction(reminder, action)"
-                          >
-                            <ion-icon [icon]="actionIcon(action)" />
-                            <span>{{ actionLabel(action) }}</span>
-                          </button>
+                  <article class="reminder-card" [class]="'reminder-card theme-' + themeClass(reminder.type)">
+                    <div class="reminder-card__top">
+                      <span class="reminder-card__emoji" aria-hidden="true">{{ typeEmoji(reminder.type) }}</span>
+                      <div class="reminder-card__copy">
+                        <p class="reminder-card__eyebrow">{{ labelForType(reminder.type) }}</p>
+                        <h3>{{ reminder.title }}</h3>
+                        <p class="reminder-card__description">{{ activeDescription(reminder) }}</p>
+                        @if (dueLabel(reminder); as dueInfo) {
+                          @if (dueInfo !== activeDescription(reminder)) {
+                          <p class="reminder-card__meta">
+                            <ion-icon aria-hidden="true" [icon]="calendarIcon" />
+                            <span>{{ dueInfo }}</span>
+                          </p>
+                          }
                         }
                       </div>
+                      <span
+                        class="status-pill"
+                        [class.status-pill--overdue]="reminder.status === 'overdue'"
+                        [class.status-pill--soon]="reminder.status === 'due-soon'"
+                      >
+                        {{ activeStatusChip(reminder) }}
+                      </span>
+                    </div>
+
+                    <div class="action-grid">
+                      @for (action of activeActions(reminder); track action) {
+                        <button
+                          type="button"
+                          class="action-btn"
+                          [class.action-btn--primary]="isPrimaryActiveAction(reminder, action)"
+                          (click)="handleActiveAction(reminder, action)"
+                        >
+                          <ion-icon aria-hidden="true" [icon]="actionIcon(action)" />
+                          <span>{{ actionLabel(action) }}</span>
+                        </button>
+                      }
                     </div>
                   </article>
                 }
@@ -194,42 +189,38 @@ type ReminderActionKey =
 
           @if (activeState() === 'SNOOZED') {
             @if (snoozedReminders().length === 0) {
-              <section class="empty-state-card empty-state-card--snoozed">
+              <section class="empty-state-card">
+                <span class="empty-state-card__emoji" aria-hidden="true">😴</span>
                 <h3>No snoozed reminders.</h3>
                 <p>Snoozed reminders will appear here until they are reactivated or restored automatically.</p>
               </section>
             } @else {
               <section class="card-stack">
                 @for (reminder of snoozedReminders(); track reminder.id) {
-                  <article class="reminder-card reminder-card--snoozed" [class]="'theme-' + themeClass(reminder.type)">
-                    <div class="reminder-card__accent"></div>
-                    <div class="reminder-card__body">
-                      <div class="reminder-card__top">
-                        <div class="reminder-card__copy">
-                          <p class="reminder-card__eyebrow">{{ labelForType(reminder.type) }}</p>
-                          <h3>{{ reminder.title }}</h3>
-                          <p class="reminder-card__description">Snoozed until {{ formatDateTime(reminder.snoozedUntil) }}</p>
-                        </div>
-
-                        <div class="reminder-card__status-col">
-                          <span class="status-pill status-pill--snoozed">Snoozed</span>
-                        </div>
+                  <article class="reminder-card reminder-card--snoozed" [class]="'reminder-card reminder-card--snoozed theme-' + themeClass(reminder.type)">
+                    <div class="reminder-card__top">
+                      <span class="reminder-card__emoji" aria-hidden="true">{{ typeEmoji(reminder.type) }}</span>
+                      <div class="reminder-card__copy">
+                        <p class="reminder-card__eyebrow">{{ labelForType(reminder.type) }}</p>
+                        <h3>{{ reminder.title }}</h3>
+                        <p class="reminder-card__description">Snoozed until {{ formatDateTime(reminder.snoozedUntil) }}</p>
                       </div>
+                      <span class="status-pill status-pill--snoozed">Snoozed</span>
+                    </div>
 
-                      <div class="action-grid action-grid--compact">
-                        <button type="button" class="action-btn action-btn--primary" (click)="activateNow(reminder.id)">
-                          <ion-icon [icon]="activateIcon" />
-                          <span>Activate Now</span>
-                        </button>
-                        <button type="button" class="action-btn" (click)="openSnoozeSheet(reminder, true)">
-                          <ion-icon [icon]="editSnoozeIcon" />
-                          <span>Edit Snooze</span>
-                        </button>
-                        <button type="button" class="action-btn action-btn--danger" (click)="deleteReminder(reminder.id)">
-                          <ion-icon [icon]="deleteIcon" />
-                          <span>Delete</span>
-                        </button>
-                      </div>
+                    <div class="action-grid">
+                      <button type="button" class="action-btn action-btn--primary" (click)="activateNow(reminder.id)">
+                        <ion-icon aria-hidden="true" [icon]="activateIcon" />
+                        <span>Activate Now</span>
+                      </button>
+                      <button type="button" class="action-btn" (click)="openSnoozeSheet(reminder, true)">
+                        <ion-icon aria-hidden="true" [icon]="editSnoozeIcon" />
+                        <span>Edit Snooze</span>
+                      </button>
+                      <button type="button" class="action-btn action-btn--danger" (click)="deleteReminder(reminder.id)">
+                        <ion-icon aria-hidden="true" [icon]="deleteIcon" />
+                        <span>Delete</span>
+                      </button>
                     </div>
                   </article>
                 }
@@ -239,7 +230,8 @@ type ReminderActionKey =
 
           @if (activeState() === 'COMPLETED') {
             @if (completedGroups().length === 0) {
-              <section class="empty-state-card empty-state-card--completed">
+              <section class="empty-state-card">
+                <span class="empty-state-card__emoji" aria-hidden="true">✅</span>
                 <h3>No completed reminders yet.</h3>
                 <p>Completed reminder history will appear here once actions are resolved.</p>
               </section>
@@ -249,39 +241,34 @@ type ReminderActionKey =
                   <h3 class="group-title">{{ group.label }}</h3>
                   <div class="card-stack">
                     @for (entry of group.entries; track entry.id) {
-                      <article class="reminder-card reminder-card--completed" [class]="'theme-' + themeClass(entry.type)">
-                        <div class="reminder-card__accent"></div>
-                        <div class="reminder-card__body">
-                          <div class="reminder-card__top">
-                            <div class="reminder-card__copy">
-                              <p class="reminder-card__eyebrow">{{ labelForType(entry.type) }}</p>
-                              <h3>{{ entry.title }}</h3>
-                              <p class="reminder-card__description">{{ completionLabel(entry.completedByAction) }}</p>
-                              <p class="reminder-card__meta">
-                                <ion-icon [icon]="calendarIcon" />
-                                <span>{{ formatCompletedMeta(entry.completedAt) }}</span>
-                              </p>
-                            </div>
-
-                            <div class="reminder-card__status-col">
-                              <span class="status-pill status-pill--completed">Completed</span>
-                            </div>
+                      <article class="reminder-card reminder-card--completed" [class]="'reminder-card reminder-card--completed theme-' + themeClass(entry.type)">
+                        <div class="reminder-card__top">
+                          <span class="reminder-card__emoji" aria-hidden="true">{{ typeEmoji(entry.type) }}</span>
+                          <div class="reminder-card__copy">
+                            <p class="reminder-card__eyebrow">{{ labelForType(entry.type) }}</p>
+                            <h3>{{ entry.title }}</h3>
+                            <p class="reminder-card__description">{{ completionLabel(entry.completedByAction) }}</p>
+                            <p class="reminder-card__meta">
+                              <ion-icon aria-hidden="true" [icon]="calendarIcon" />
+                              <span>{{ formatCompletedMeta(entry.completedAt) }}</span>
+                            </p>
                           </div>
+                          <span class="status-pill status-pill--completed">Completed</span>
+                        </div>
 
-                          <div class="action-grid action-grid--compact">
-                            <button type="button" class="action-btn" (click)="viewCompleted(entry)">
-                              <ion-icon [icon]="viewIcon" />
-                              <span>View Details</span>
-                            </button>
-                            <button type="button" class="action-btn" (click)="restoreCompleted(entry.id)">
-                              <ion-icon [icon]="restoreIcon" />
-                              <span>Restore</span>
-                            </button>
-                            <button type="button" class="action-btn action-btn--danger" (click)="deleteCompleted(entry.id)">
-                              <ion-icon [icon]="deleteIcon" />
-                              <span>Delete</span>
-                            </button>
-                          </div>
+                        <div class="action-grid">
+                          <button type="button" class="action-btn" (click)="viewCompleted(entry)">
+                            <ion-icon aria-hidden="true" [icon]="viewIcon" />
+                            <span>View Details</span>
+                          </button>
+                          <button type="button" class="action-btn" (click)="restoreCompleted(entry.id)">
+                            <ion-icon aria-hidden="true" [icon]="restoreIcon" />
+                            <span>Restore</span>
+                          </button>
+                          <button type="button" class="action-btn action-btn--danger" (click)="deleteCompleted(entry.id)">
+                            <ion-icon aria-hidden="true" [icon]="deleteIcon" />
+                            <span>Delete</span>
+                          </button>
                         </div>
                       </article>
                     }
@@ -296,36 +283,48 @@ type ReminderActionKey =
 
     <div class="sticky-create-bar">
       <button type="button" class="create-btn" (click)="openCreateReminderModal()">
-        <ion-icon [icon]="addIcon" />
+        <span class="create-btn__icon" aria-hidden="true"><ion-icon [icon]="addIcon" /></span>
         <span>Create Reminder</span>
       </button>
     </div>
 
-    <ion-modal [isOpen]="customModalOpen()" [initialBreakpoint]="0.94" [breakpoints]="[0, 0.94]" (didDismiss)="closeCreateModal()">
+    <ion-modal
+      class="reminder-sheet theme-citrus"
+      [isOpen]="customModalOpen()"
+      [initialBreakpoint]="0.94"
+      [breakpoints]="[0, 0.94]"
+      (didDismiss)="closeCreateModal()"
+    >
       <ng-template>
         <form class="custom-modal" [formGroup]="customForm" (ngSubmit)="saveCustomReminder()">
-          <div class="sheet-handle"></div>
-          <div class="custom-modal__body">
-            <header class="custom-modal__header">
+          <header class="custom-modal__header">
+            <span class="custom-modal__emoji" aria-hidden="true">🔔</span>
+            <div>
               <h2>Create Reminder</h2>
               <p>Store one-time or repeating reminders locally on this device.</p>
-            </header>
+            </div>
+          </header>
 
-            <div class="custom-modal__fields">
-              <label class="field">
-                <span>Reminder Name</span>
-                <input type="text" formControlName="name" placeholder="e.g. Buy Basmati Rice" />
-              </label>
+          <div class="custom-modal__card">
+            <label class="field">
+              <span>Reminder Name</span>
+              <input type="text" formControlName="name" placeholder="e.g. Buy Basmati Rice" />
+            </label>
 
-              <label class="field">
-                <span>Type</span>
-                <select formControlName="recurrence">
-                  @for (option of recurrenceOptions; track option.value) {
-                    <option [value]="option.value">{{ option.label }}</option>
-                  }
-                </select>
-              </label>
+            <fieldset class="field">
+              <legend>Repeat</legend>
+              <div class="repeat-chips" role="radiogroup" aria-label="Type">
+                @for (option of recurrenceOptions; track option.value) {
+                  <label class="repeat-chip" [class.repeat-chip--active]="customForm.controls.recurrence.value === option.value">
+                    <input type="radio" class="visually-hidden" formControlName="recurrence" [value]="option.value" />
+                    <span aria-hidden="true">{{ recurrenceEmoji(option.value) }}</span>
+                    {{ option.label }}
+                  </label>
+                }
+              </div>
+            </fieldset>
 
+            <div class="field-row">
               <label class="field">
                 <span>Date</span>
                 <input type="date" formControlName="date" />
@@ -338,80 +337,96 @@ type ReminderActionKey =
             </div>
           </div>
 
-          <footer class="custom-modal__footer">
-            <div class="modal-actions">
-              <button type="button" class="ghost-btn" (click)="closeCreateModal()">Cancel</button>
-              <button type="submit" class="save-btn" [disabled]="customForm.invalid">Save Reminder</button>
-            </div>
+          <p class="custom-modal__summary">
+            <span aria-hidden="true">⏰</span>
+            {{ customReminderSummary() }}
+          </p>
+
+          <footer class="modal-actions">
+            <button type="button" class="ghost-btn" (click)="closeCreateModal()">Cancel</button>
+            <button type="submit" class="save-btn" [disabled]="customForm.invalid">Save Reminder</button>
           </footer>
         </form>
       </ng-template>
     </ion-modal>
 
-    <ion-modal [isOpen]="snoozeModalOpen()" [initialBreakpoint]="0.72" [breakpoints]="[0, 0.72]" (didDismiss)="closeSnoozeSheet()">
+    <ion-modal
+      class="reminder-sheet theme-citrus"
+      [isOpen]="snoozeModalOpen()"
+      [initialBreakpoint]="0.72"
+      [breakpoints]="[0, 0.72]"
+      (didDismiss)="closeSnoozeSheet()"
+    >
       <ng-template>
         <div class="custom-modal snooze-modal">
-          <div class="sheet-handle"></div>
-          <div class="custom-modal__body">
-            <header class="custom-modal__header">
+          <header class="custom-modal__header">
+            <span class="custom-modal__emoji" aria-hidden="true">😴</span>
+            <div>
               <h2>Snooze Reminder</h2>
               <p>Choose when this reminder should return to your active list.</p>
-            </header>
-
-            <div class="option-list">
-              @for (option of snoozeOptions; track option.value) {
-                <button
-                  type="button"
-                  class="option-card"
-                  [class.option-card--active]="selectedSnoozePreset() === option.value"
-                  (click)="selectSnoozePreset(option.value)"
-                >
-                  <div>
-                    <strong>{{ option.label }}</strong>
-                    <span>{{ snoozeOptionSubtitle(option.value) }}</span>
-                  </div>
-                  <span class="option-radio"></span>
-                </button>
-              }
             </div>
+          </header>
 
-            @if (selectedSnoozePreset() === 'custom') {
-              <div class="custom-modal__fields">
-                <label class="field">
-                  <span>Custom Date</span>
-                  <input type="date" [value]="customSnoozeDate()" (input)="updateCustomSnoozeDate($event)" />
-                </label>
-
-                <label class="field">
-                  <span>Custom Time</span>
-                  <input type="time" [value]="customSnoozeTime()" (input)="updateCustomSnoozeTime($event)" />
-                </label>
-              </div>
+          <div class="option-list">
+            @for (option of snoozeOptions; track option.value) {
+              <button
+                type="button"
+                class="option-card"
+                [class.option-card--active]="selectedSnoozePreset() === option.value"
+                [attr.aria-pressed]="selectedSnoozePreset() === option.value"
+                (click)="selectSnoozePreset(option.value)"
+              >
+                <div>
+                  <strong>{{ option.label }}</strong>
+                  <span>{{ snoozeOptionSubtitle(option.value) }}</span>
+                </div>
+                <span class="option-radio" aria-hidden="true"></span>
+              </button>
             }
           </div>
 
-          <footer class="custom-modal__footer">
-            <div class="modal-actions">
-              <button type="button" class="ghost-btn" (click)="closeSnoozeSheet()">Cancel</button>
-              <button type="button" class="save-btn" [disabled]="!canConfirmSnooze()" (click)="confirmSnooze()">
-                Confirm Snooze
-              </button>
+          @if (selectedSnoozePreset() === 'custom') {
+            <div class="custom-modal__card field-row">
+              <label class="field">
+                <span>Custom Date</span>
+                <input type="date" [value]="customSnoozeDate()" (input)="updateCustomSnoozeDate($event)" />
+              </label>
+
+              <label class="field">
+                <span>Custom Time</span>
+                <input type="time" [value]="customSnoozeTime()" (input)="updateCustomSnoozeTime($event)" />
+              </label>
             </div>
+          }
+
+          <footer class="modal-actions">
+            <button type="button" class="ghost-btn" (click)="closeSnoozeSheet()">Cancel</button>
+            <button type="button" class="save-btn" [disabled]="!canConfirmSnooze()" (click)="confirmSnooze()">
+              Confirm Snooze
+            </button>
           </footer>
         </div>
       </ng-template>
     </ion-modal>
 
-    <ion-modal [isOpen]="restockModalOpen()" [initialBreakpoint]="0.64" [breakpoints]="[0, 0.64]" (didDismiss)="closeRestockSheet()">
+    <ion-modal
+      class="reminder-sheet theme-citrus"
+      [isOpen]="restockModalOpen()"
+      [initialBreakpoint]="0.64"
+      [breakpoints]="[0, 0.64]"
+      (didDismiss)="closeRestockSheet()"
+    >
       <ng-template>
         <div class="custom-modal restock-modal">
-          <div class="sheet-handle"></div>
-          <div class="custom-modal__body" style="flex-grow: 0">
-            <header class="custom-modal__header">
+          <header class="custom-modal__header">
+            <span class="custom-modal__emoji" aria-hidden="true">📦</span>
+            <div>
               <h2>Mark Restocked</h2>
               <p>How many {{ restockItemName() }} do you have now?</p>
-            </header>
+            </div>
+          </header>
 
+          <div class="custom-modal__card">
             <label class="field">
               <span>New Quantity</span>
               <input
@@ -434,13 +449,11 @@ type ReminderActionKey =
             </label>
           </div>
 
-          <footer class="custom-modal__footer">
-            <div class="modal-actions">
-              <button type="button" class="ghost-btn" (click)="closeRestockSheet()">Cancel</button>
-              <button type="button" class="save-btn" [disabled]="!canConfirmRestock()" (click)="confirmRestock()">
-                Save
-              </button>
-            </div>
+          <footer class="modal-actions">
+            <button type="button" class="ghost-btn" (click)="closeRestockSheet()">Cancel</button>
+            <button type="button" class="save-btn" [disabled]="!canConfirmRestock()" (click)="confirmRestock()">
+              Save
+            </button>
           </footer>
         </div>
       </ng-template>
@@ -448,753 +461,791 @@ type ReminderActionKey =
   `,
   styles: [
     `
+      /* Reminders — "Citrus & Ink". Tokens (--h-*) come from .theme-citrus
+         (src/theme/citrus.scss). The sheets carry .theme-citrus themselves
+         because Ionic moves inline modals out of this component's host. */
       :host {
         display: block;
         min-height: 100%;
-        background:
-          radial-gradient(circle at top left, rgba(174, 231, 206, 0.42), transparent 24%),
-          radial-gradient(circle at top right, rgba(255, 221, 221, 0.28), transparent 22%),
-          linear-gradient(180deg, #f7fbf7 0%, #f5f7f4 100%);
       }
 
-      .reminders-content {
-        --background: transparent;
+      ion-icon {
+        flex-shrink: 0;
       }
 
-      .reminders-page {
-        min-height: 100%;
-        padding: 0 0 5rem;
-      }
-
-      .hero {
-        display: grid;
-        gap: 1rem;
-        padding: calc(env(safe-area-inset-top, 0px) + 1rem) 0.9rem 0;
-      }
-
-      .hero__top,
-      .hero__title-block,
-      .section-head,
-      .reminder-card__top,
-      .reminder-card__identity,
-      .reminder-card__status-col,
-      .sort-chip,
-      .create-btn,
-      .state-tabs,
-      .action-btn {
-        display: flex;
-      }
-
-      .hero__top,
-      .section-head,
-      .reminder-card__top {
-        justify-content: space-between;
-      }
-
-      .hero__top,
-      .reminder-card__top {
-        gap: 1rem;
-      }
-
-      .hero__title-block,
-      .reminder-card__identity {
-        align-items: flex-start;
-        gap: 0.9rem;
-        min-width: 0;
-      }
-
-      .hero__icon-shell,
-      .stat-tile,
-      .state-tab,
-      .empty-state-card,
-      .reminder-card,
-      .sort-chip,
-      .option-card {
-        backdrop-filter: blur(18px);
-      }
-
-      .hero__icon-shell {
-        width: auto;
-        height: auto;
-        background: transparent;
-        border: none;
-        box-shadow: none;
-      }
-
-      .hero__icon,
-      .state-tab--active,
-      .create-btn,
-      .action-btn--primary {
-        color: #fff;
-      }
-
-      .hero__icon {
-        font-size: 2rem;
-        margin-top: 0.15rem;
-        color: #118452;
-      }
-
-      h1,
-      h2,
-      h3,
-      p,
-      strong,
-      span {
-        margin: 0;
-      }
-
-      h1,
-      h2,
-      h3,
-      .stat-tile strong,
-      .create-btn,
-      .state-tab {
-        font-family: 'Plus Jakarta Sans', 'Manrope', sans-serif;
-      }
-
-      h1 {
-        color: #0f8856;
-        font-size: clamp(1.7rem, 6vw, 2.1rem);
-        font-weight: 800;
-        letter-spacing: -0.03em;
-      }
-
-      .hero__copy p {
-        margin-top: 0.3rem;
-        max-width: 24rem;
-        color: #607468;
-        font-size: 0.92rem;
-        line-height: 1.42;
-      }
-
-      .stats-panel {
-        display: grid;
-        grid-template-columns: repeat(5, minmax(0, 1fr));
-        gap: 0.5rem;
-        padding: 0.75rem;
-        border: 1px solid rgba(220, 229, 222, 0.95);
-        border-radius: 24px;
-        background: rgba(255, 255, 255, 0.78);
-        box-shadow: 0 18px 44px rgba(16, 63, 40, 0.08);
-        overflow-x: auto;
-        scrollbar-width: none;
-      }
-
-      .stats-panel::-webkit-scrollbar {
-        display: none;
-      }
-
-      .stat-tile {
-        min-height: 6rem;
-        min-width: 0;
-        padding: 0.7rem 0.25rem;
-        border: 1px solid #dbe5de;
-        border-radius: 20px;
-        background: linear-gradient(180deg, rgba(255, 255, 255, 0.95), rgba(248, 251, 249, 0.88));
-        display: grid;
-        justify-items: center;
-        align-content: center;
-        gap: 0.35rem;
-        color: #203f31;
-        text-align: center;
-      }
-
-      .stat-tile__icon-wrap {
-        width: 2.45rem;
-        height: 2.45rem;
-        border-radius: 50%;
-        display: grid;
-        place-items: center;
-        background: rgba(238, 244, 240, 0.9);
-        font-size: 1.05rem;
-      }
-
-      .stat-tile strong {
-        font-size: 1.2rem;
-        line-height: 1;
-      }
-
-      .stat-tile span:last-child {
-        font-size: 0.72rem;
-        font-weight: 600;
-      }
-
-      .stat-tile--active {
-        background: linear-gradient(180deg, #ffffff 0%, #f0f7f3 100%);
-        box-shadow: 0 16px 30px rgba(16, 63, 40, 0.08);
-      }
-
-      .state-tabs {
-        gap: 0.55rem;
-        overflow-x: auto;
-        padding-bottom: 0.15rem;
-        scrollbar-width: none;
-      }
-
-      .state-tabs::-webkit-scrollbar,
-      .filter-row::-webkit-scrollbar {
-        display: none;
-      }
-
-      .state-tab,
-      .filter-chip {
-        flex: 0 0 auto;
-        border-radius: 999px;
-        font: inherit;
+      .visually-hidden {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip-path: inset(50%);
         white-space: nowrap;
       }
 
-      .state-tab {
-        min-height: 2.55rem;
-        padding: 0 1rem;
-        border: 1px solid #d7e5dc;
-        background: rgba(255, 255, 255, 0.88);
-        color: #325545;
-        font-size: 0.86rem;
+      .reminders-content::part(background) {
+        background: var(--h-canvas);
+      }
+
+      .reminders-page {
+        width: min(100%, 720px);
+        min-height: 100%;
+        margin: 0 auto;
+        padding: 0 var(--h-gutter) 9rem;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        align-content: start;
+        gap: 16px;
+      }
+
+      /* Header */
+      .page-header {
+        position: sticky;
+        top: 0;
+        z-index: 20;
+        display: grid;
+        grid-template-columns: 44px minmax(0, 1fr) 44px;
+        align-items: center;
+        gap: 12px;
+        margin: 0 calc(var(--h-gutter) * -1);
+        padding: calc(env(safe-area-inset-top, 0px) + 12px) var(--h-gutter) 12px;
+        background: color-mix(in srgb, var(--h-canvas) 88%, transparent);
+        backdrop-filter: blur(18px);
+      }
+
+      .icon-btn {
+        width: 44px;
+        height: 44px;
+        padding: 0;
+        border: 1px solid var(--h-line);
+        border-radius: 50%;
+        background: var(--h-surface);
+        color: var(--h-ink);
+        display: grid;
+        place-items: center;
+        font-size: 20px;
+      }
+
+      .icon-btn--ghost {
+        visibility: hidden;
+      }
+
+      .page-header__text {
+        text-align: center;
+        min-width: 0;
+      }
+
+      .page-header__text h1 {
+        margin: 0;
+        font-size: 1.3rem;
         font-weight: 800;
+        letter-spacing: -0.03em;
+        color: var(--h-ink);
+      }
+
+      .page-header__text p {
+        margin: 2px 0 0;
+        font-size: 0.72rem;
+        font-weight: 600;
+        line-height: 1.3;
+        color: var(--h-muted);
+      }
+
+      /* Hero */
+      .hero {
+        position: relative;
+        isolation: isolate;
+        overflow: hidden;
+        display: grid;
+        justify-items: start;
+        gap: 14px;
+        padding: 20px 18px 18px;
+        border-radius: 30px;
+        color: #ffffff;
+        background:
+          radial-gradient(70% 80% at 100% 100%, rgba(255, 106, 61, 0.5), transparent 70%),
+          radial-gradient(45% 55% at 0% 0%, rgba(201, 184, 255, 0.22), transparent 70%),
+          var(--h-hero-bg);
+        outline: 1px solid var(--h-hero-border);
+        outline-offset: -1px;
+        box-shadow: 0 24px 40px -24px rgba(22, 20, 29, 0.6);
+      }
+
+      .hero-dots {
+        position: absolute;
+        z-index: -1;
+        inset: 0 0 auto auto;
+        width: 55%;
+        height: 70%;
+        background-image: radial-gradient(rgba(255, 255, 255, 0.16) 1.2px, transparent 1.4px);
+        background-size: 14px 14px;
+        mask-image: linear-gradient(225deg, #000 10%, transparent 70%);
+      }
+
+      .hero__eyebrow {
+        margin: 0 0 0 4px;
+        padding: 6px 12px;
+        border-radius: 10px;
+        background: var(--h-lilac);
+        color: #16141d;
+        font-size: 0.68rem;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        transform: rotate(-3deg);
+      }
+
+      .hero__title {
+        margin: 0 4px;
+        font-size: clamp(1.5rem, 5.6vw, 2rem);
+        font-weight: 800;
+        line-height: 1.08;
+        letter-spacing: -0.035em;
+        color: #ffffff;
+      }
+
+      .hero__highlight {
+        color: var(--h-sun);
+      }
+
+      .state-tabs {
+        width: 100%;
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 4px;
+        padding: 4px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.1);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+      }
+
+      .state-tab {
+        min-height: 40px;
+        padding: 0 6px;
+        border: none;
+        border-radius: 999px;
+        background: transparent;
+        color: rgba(255, 255, 255, 0.75);
+        font-size: 0.8rem;
+        font-weight: 800;
+        white-space: nowrap;
+        transition: background-color 180ms ease, color 180ms ease;
       }
 
       .state-tab--active {
-        border-color: #0a8f5b;
-        background: #0a8f5b;
+        background: #ffffff;
+        color: #16141d;
       }
 
-      .filter-row {
-        display: flex;
-        gap: 0.5rem;
-        overflow-x: auto;
-        padding-bottom: 0.25rem;
-        scrollbar-width: none;
+      /* Category tiles (filter) */
+      .stats-panel {
+        display: grid;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        gap: 8px;
       }
 
-      .filter-chip {
-        min-height: 2rem;
-        padding: 0.3rem 0.9rem;
-        border: 1px solid #d2dce6;
-        background: #f8fafc;
-        color: #4c5a54;
-        font-size: 0.825rem;
-        font-weight: 600;
+      .stat-tile {
+        --tile: var(--h-surface);
+        min-width: 0;
+        display: grid;
+        justify-items: center;
+        gap: 2px;
+        padding: 10px 4px;
+        border: 1px solid var(--h-line);
+        border-radius: 20px;
+        background: var(--tile);
+        color: var(--h-ink);
+        transition: transform 160ms ease, background-color 160ms ease;
       }
 
-      .filter-chip--active {
-        border-color: #006c49;
-        background: #dbf8ea;
-        color: #006c49;
+      .stat-tile__emoji {
+        font-size: 1.2rem;
       }
 
-      .theme-all {
-        color: #118452;
+      .stat-tile strong {
+        font-family: var(--h-display);
+        font-size: 1.2rem;
+        font-weight: 800;
+        line-height: 1.1;
       }
 
-      .theme-all .stat-tile__icon-wrap {
-        background: #e5f6ec;
+      .stat-tile__label {
+        max-width: 100%;
+        font-size: 0.64rem;
+        font-weight: 700;
+        color: var(--h-ink-soft);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
       }
 
-      .theme-expiry {
-        color: #ff7a00;
+      /* Doubled class so it wins over the later .theme-* tile colours. */
+      .stat-tile.stat-tile--active {
+        --tile: var(--h-btn-bg);
+        border-color: var(--h-btn-bg);
+        color: var(--h-btn-fg);
+        transform: translateY(-2px);
+        box-shadow: 0 10px 18px -12px rgba(22, 20, 29, 0.7);
       }
 
-      .theme-expiry .stat-tile__icon-wrap {
-        background: #fff0e1;
+      .stat-tile--active .stat-tile__label {
+        color: inherit;
+        opacity: 0.8;
       }
 
-      .theme-low-stock {
-        color: #1772ee;
-      }
-
-      .theme-low-stock .stat-tile__icon-wrap {
-        background: #e9f2ff;
-      }
-
-      .theme-budget {
-        color: #8f43ff;
-      }
-
-      .theme-budget .stat-tile__icon-wrap {
-        background: #f1e9ff;
-      }
-
-      .theme-cart {
-        color: #ef476f;
-      }
-
-      .theme-cart .stat-tile__icon-wrap {
-        background: #ffe8ef;
-      }
-
-      .theme-custom {
-        color: #0d9488;
-      }
-
-      .theme-custom .stat-tile__icon-wrap {
-        background: #e5fbf8;
-      }
-
+      /* Section head */
       .reminders-main {
-        padding: 1.35rem 0.9rem 0;
+        display: grid;
+        gap: 12px;
       }
 
       .section-head {
+        display: flex;
         align-items: center;
-        margin-bottom: 1rem;
+        justify-content: space-between;
+        gap: 12px;
       }
 
       .section-head h2 {
-        flex: 1 1 auto;
-        min-width: 0;
-        color: #173a29;
-        font-size: 1.25rem;
+        margin: 0;
+        font-size: 1.3rem;
         font-weight: 800;
-        letter-spacing: -0.02em;
+        letter-spacing: -0.03em;
+        color: var(--h-ink);
       }
 
       .sort-chip {
-        flex: 0 0 auto;
+        flex-shrink: 0;
+        display: inline-flex;
         align-items: center;
-        min-height: 2.25rem;
-        padding: 0 0.8rem;
-        border: none;
+        gap: 6px;
+        min-height: 34px;
+        padding: 0 12px;
+        border: 1px solid var(--h-line);
         border-radius: 999px;
-        background: rgba(255, 255, 255, 0.55);
-        color: #0d8a57;
-        font-weight: 700;
-        font-size: 0.88rem;
-      }
-
-      .card-stack {
-        display: grid;
-        gap: 0.75rem;
-      }
-
-      .group-section + .group-section {
-        margin-top: 1.1rem;
-      }
-
-      .group-title {
-        margin-bottom: 0.75rem;
-        color: #0f7a4e;
-        font-size: 1rem;
+        background: var(--h-surface);
+        color: var(--h-ink);
+        font-size: 0.76rem;
         font-weight: 800;
       }
 
-      .reminder-card,
-      .empty-state-card {
-        position: relative;
-        overflow: hidden;
-        border: 1px solid rgba(217, 226, 220, 0.96);
-        border-radius: 22px;
-        background: rgba(255, 255, 255, 0.86);
-        box-shadow: 0 16px 36px rgba(16, 63, 40, 0.08);
+      /* Cards */
+      .card-stack {
+        display: grid;
+        gap: 12px;
       }
 
-      .reminder-card__accent {
-        position: absolute;
-        inset: 0 auto 0 0;
-        width: 4px;
-        background: currentColor;
+      .group-section {
+        display: grid;
+        gap: 10px;
       }
 
-      .reminder-card__body {
-        padding: 0.95rem 0.95rem 1rem 1rem;
+      .group-title {
+        margin: 6px 0 0;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 0.74rem;
+        font-weight: 800;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--h-muted);
       }
 
-      .reminder-card__icon-shell {
-        width: 3.45rem;
-        height: 3.45rem;
-        border-radius: 50%;
+      .group-title::after {
+        content: '';
+        flex: 1;
+        height: 1px;
+        background: var(--h-line);
+      }
+
+      .reminder-card {
+        --tile: var(--h-tile-2);
+        display: grid;
+        gap: 14px;
+        padding: 16px;
+        border-radius: 24px;
+        border: 1px solid var(--h-line);
+        background: var(--h-surface);
+        box-shadow: var(--h-shadow);
+      }
+
+      .theme-expiry { --tile: var(--h-tile-1); }
+      .theme-low-stock { --tile: var(--h-tile-3); }
+      .theme-budget { --tile: var(--h-tile-4); }
+      .theme-cart { --tile: var(--h-tile-6); }
+      .theme-custom { --tile: var(--h-tile-2); }
+
+      .reminder-card__top {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+      }
+
+      .reminder-card__emoji {
+        width: 48px;
+        height: 48px;
+        flex-shrink: 0;
+        border-radius: 16px;
         display: grid;
         place-items: center;
-        background: color-mix(in srgb, currentColor 12%, white);
-        color: currentColor;
-        flex: 0 0 auto;
-        font-size: 1.7rem;
+        background: var(--tile);
+        font-size: 1.4rem;
+        transform: rotate(-5deg);
       }
 
       .reminder-card__copy {
+        flex: 1;
         min-width: 0;
       }
 
       .reminder-card__eyebrow {
-        color: currentColor;
-        font-size: 0.68rem;
+        margin: 0;
+        font-size: 0.62rem;
         font-weight: 800;
-        letter-spacing: 0.12em;
+        letter-spacing: 0.08em;
         text-transform: uppercase;
+        color: var(--h-muted);
       }
 
       .reminder-card h3 {
-        margin-top: 0.15rem;
-        color: #173727;
-        font-size: 1.1rem;
+        margin: 2px 0 0;
+        font-size: 1.05rem;
         font-weight: 800;
-        letter-spacing: -0.03em;
-        line-height: 1.15;
+        letter-spacing: -0.02em;
+        line-height: 1.2;
+        color: var(--h-ink);
       }
 
       .reminder-card__description {
-        margin-top: 0.24rem;
-        color: #315443;
-        font-size: 0.92rem;
-        font-weight: 700;
-        line-height: 1.35;
+        margin: 3px 0 0;
+        font-size: 0.84rem;
+        font-weight: 600;
+        color: var(--h-ink-soft);
       }
 
       .reminder-card__meta {
-        display: inline-flex;
+        margin: 6px 0 0;
+        display: flex;
         align-items: center;
-        gap: 0.38rem;
-        margin-top: 0.38rem;
-        color: #667a70;
-        font-size: 0.82rem;
-      }
-
-      .reminder-card__status-col {
-        flex-direction: column;
-        align-items: flex-end;
-        gap: 0.65rem;
-        flex: 0 0 auto;
+        gap: 6px;
+        font-size: 0.74rem;
+        font-weight: 600;
+        color: var(--h-muted);
       }
 
       .status-pill {
-        padding: 0.45rem 0.8rem;
+        flex-shrink: 0;
+        padding: 5px 10px;
         border-radius: 999px;
-        font-size: 0.78rem;
+        background: var(--h-canvas);
+        color: var(--h-ink-soft);
+        font-size: 0.68rem;
         font-weight: 800;
-        line-height: 1;
-        background: rgba(12, 138, 87, 0.1);
+        white-space: nowrap;
       }
 
-      .status-pill--expiry {
-        color: #e64b4b;
-        background: #ffecee;
+      .status-pill--soon { background: var(--h-warn-surface); color: var(--h-warn); }
+      .status-pill--overdue { background: var(--h-danger-surface); color: var(--h-danger); }
+      .status-pill--snoozed { background: var(--h-tile-2); color: var(--h-ink); }
+      .status-pill--completed { background: color-mix(in srgb, var(--h-ok) 16%, transparent); color: var(--h-ok); }
+
+      .reminder-card--snoozed,
+      .reminder-card--completed {
+        box-shadow: none;
       }
 
-      .status-pill--low-stock {
-        color: #1772ee;
-        background: #e9f2ff;
+      .reminder-card--completed .reminder-card__emoji {
+        filter: grayscale(0.6);
       }
 
-      .status-pill--budget {
-        color: #8f43ff;
-        background: #f1e9ff;
-      }
-
-      .status-pill--cart {
-        color: #ef476f;
-        background: #ffe8ef;
-      }
-
-      .status-pill--custom,
-      .status-pill--all {
-        color: #0d9488;
-        background: #e5fbf8;
-      }
-
-      .status-pill--snoozed {
-        color: #6557ff;
-        background: #efecff;
-      }
-
-      .status-pill--completed {
-        color: #0a8f5b;
-        background: #e7f8ed;
-      }
-
+      /* Actions wrap instead of being clipped */
       .action-grid {
         display: flex;
-        gap: 0.55rem;
-        margin-top: 0.85rem;
-        overflow-x: auto;
-        padding-bottom: 0.15rem;
-        scrollbar-width: none;
-      }
-
-      .action-grid--compact {
-        gap: 0.5rem;
-      }
-
-      .action-grid::-webkit-scrollbar {
-        display: none;
+        flex-wrap: wrap;
+        gap: 8px;
       }
 
       .action-btn {
-        flex: 0 0 auto;
-        min-height: 2.6rem;
-        min-width: max-content;
+        display: inline-flex;
         align-items: center;
-        justify-content: center;
-        gap: 0.45rem;
-        padding: 0.35rem 0.75rem;
-        border-radius: 14px;
-        border: 1px solid #d9e2dc;
-        background: #fff;
-        color: #244636;
-        font-size: 0.84rem;
-        font-weight: 700;
+        gap: 6px;
+        min-height: 38px;
+        padding: 0 14px;
+        border: 1px solid var(--h-line);
+        border-radius: 999px;
+        background: var(--h-canvas);
+        color: var(--h-ink);
+        font-size: 0.8rem;
+        font-weight: 800;
+        transition: transform 140ms ease;
       }
 
-      .action-btn ion-icon {
-        font-size: 0.95rem;
-        flex: 0 0 auto;
+      .action-btn:active {
+        transform: scale(0.96);
       }
 
       .action-btn--primary {
-        border-color: transparent;
-        background: #0d8a57;
+        border-color: var(--h-btn-bg);
+        background: var(--h-btn-bg);
+        color: var(--h-btn-fg);
       }
 
       .action-btn--danger {
-        color: #cf3a57;
+        border-color: transparent;
+        background: var(--h-danger-surface);
+        color: var(--h-danger);
       }
 
+      /* Empty state */
       .empty-state-card {
         display: grid;
-        gap: 0.45rem;
-        padding: 1.35rem 1.2rem;
+        justify-items: center;
+        gap: 8px;
+        padding: 32px 20px;
+        border-radius: 28px;
+        border: 2px dashed var(--h-line);
+        background: var(--h-surface);
         text-align: center;
-        border-color: rgba(215, 227, 220, 0.96);
       }
 
-      .empty-state-card--active {
-        background:
-          radial-gradient(circle at top left, rgba(200, 244, 220, 0.95), transparent 34%),
-          linear-gradient(145deg, #f8fffb 0%, #eef8f2 48%, #f3fbff 100%);
-      }
-
-      .empty-state-card--snoozed {
-        background:
-          radial-gradient(circle at top right, rgba(232, 223, 255, 0.95), transparent 36%),
-          linear-gradient(145deg, #fcfbff 0%, #f3efff 52%, #eef7ff 100%);
-      }
-
-      .empty-state-card--completed {
-        background:
-          radial-gradient(circle at top left, rgba(210, 248, 222, 0.98), transparent 34%),
-          linear-gradient(145deg, #fbfff9 0%, #effaf0 50%, #fff8ef 100%);
+      .empty-state-card__emoji {
+        width: 64px;
+        height: 64px;
+        margin-bottom: 4px;
+        border-radius: 22px;
+        display: grid;
+        place-items: center;
+        background: var(--h-tile-3);
+        font-size: 2rem;
+        transform: rotate(-6deg);
       }
 
       .empty-state-card h3 {
-        color: #173727;
-        font-size: 1.25rem;
+        margin: 0;
+        font-size: 1.15rem;
         font-weight: 800;
+        color: var(--h-ink);
       }
 
       .empty-state-card p {
-        color: #60786b;
-        line-height: 1.45;
+        margin: 0;
+        font-size: 0.86rem;
+        color: var(--h-ink-soft);
       }
 
+      /* Create button */
       .sticky-create-bar {
         position: fixed;
-        left: 50%;
-        transform: translateX(-50%);
-        width: min(720px, calc(100% - 1rem));
-        bottom: 0.35rem;
-        z-index: 25;
-        display: flex;
-        justify-content: flex-end;
-        align-items: flex-end;
-        pointer-events: none;
+        right: max(var(--h-gutter), calc((100% - 720px) / 2 + var(--h-gutter)));
+        bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);
+        z-index: 30;
       }
 
       .create-btn {
-        pointer-events: auto;
-        min-height: 3.2rem;
-        padding: 0 1rem;
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        min-height: 56px;
+        padding: 0 22px 0 8px;
         border: none;
         border-radius: 999px;
-        align-items: center;
-        gap: 0.55rem;
-        background: #0d8a57;
-        font-size: 0.92rem;
+        background: var(--h-accent);
+        color: #ffffff;
+        font-size: 0.95rem;
         font-weight: 800;
-        box-shadow: 0 16px 30px rgba(13, 138, 87, 0.28);
+        box-shadow: 0 14px 28px -10px var(--h-accent-glow);
+        transition: transform 140ms ease;
+      }
+
+      .create-btn:active {
+        transform: scale(0.96);
+      }
+
+      .create-btn__icon {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        background: #ffffff;
+        color: var(--h-accent);
+        font-size: 22px;
+      }
+
+      /* ---------------- Bottom sheets ---------------- */
+
+      ion-modal.reminder-sheet {
+        --background: var(--h-canvas);
+        --border-radius: 30px;
+        --box-shadow: 0 -20px 50px -20px rgba(22, 20, 29, 0.45);
       }
 
       .custom-modal {
         height: 100%;
+        overflow-y: auto;
         display: flex;
         flex-direction: column;
-        gap: 0.75rem;
-        padding: 0.75rem 0.9rem calc(1rem + env(safe-area-inset-bottom, 0px));
-        background: linear-gradient(180deg, #f7fbf8 0%, #eef5f0 100%);
+        gap: 16px;
+        padding: 28px var(--h-gutter) calc(8vh + 24px + env(safe-area-inset-bottom, 0px));
+        color: var(--h-ink);
       }
 
-      .snooze-modal {
-        padding-bottom: calc(0.8rem + env(safe-area-inset-bottom, 0px));
+      /* Sheets open at a partial breakpoint; keep their actions reachable. */
+      .snooze-modal { padding-bottom: calc(30vh + 16px); }
+      .restock-modal { padding-bottom: calc(38vh + 16px); }
+
+      ion-modal.reminder-sheet::part(handle) {
+        width: 44px;
+        background: color-mix(in srgb, var(--h-muted) 45%, transparent);
       }
 
-      .sheet-handle {
-        width: 4rem;
-        height: 0.3rem;
-        margin: 0 auto 0.2rem;
-        border-radius: 999px;
-        background: #b1cfbc;
+      .custom-modal__header {
+        display: flex;
+        align-items: center;
+        gap: 14px;
       }
 
-      .custom-modal__body {
-        flex: 1 1 auto;
-        min-height: 0;
-        display: grid;
-        align-content: start;
-        gap: 0.75rem;
-        overflow: auto;
-      }
-
-      .custom-modal__header,
-      .custom-modal__fields,
-      .field,
-      .option-list {
-        display: grid;
-        gap: 0.6rem;
-      }
-
-      .custom-modal__header,
-      .field,
-      .option-card {
-        padding: 1rem;
+      .custom-modal__emoji {
+        width: 52px;
+        height: 52px;
+        flex-shrink: 0;
         border-radius: 18px;
-        background: #fff;
-        border: 1px solid #dae7de;
-        box-shadow: 0 8px 24px rgba(7, 61, 39, 0.06);
+        display: grid;
+        place-items: center;
+        background: var(--h-sun);
+        font-size: 1.5rem;
+        transform: rotate(-6deg);
       }
 
       .custom-modal__header h2 {
-        color: #163828;
+        margin: 0;
         font-size: 1.35rem;
         font-weight: 800;
+        letter-spacing: -0.03em;
+        color: var(--h-ink);
       }
 
       .custom-modal__header p {
-        color: #5d7669;
-      }
-
-      .field span {
-        color: #315443;
+        margin: 3px 0 0;
         font-size: 0.8rem;
+        line-height: 1.4;
+        color: var(--h-muted);
+      }
+
+      .custom-modal__card {
+        display: grid;
+        gap: 16px;
+        padding: 16px;
+        border-radius: 24px;
+        border: 1px solid var(--h-line);
+        background: var(--h-surface);
+        box-shadow: var(--h-shadow);
+      }
+
+      .field {
+        min-width: 0;
+        margin: 0;
+        padding: 0;
+        border: 0;
+        display: grid;
+        gap: 8px;
+      }
+
+      .field > span,
+      .field > legend {
+        padding: 0;
+        font-size: 0.78rem;
+        font-weight: 700;
+        color: var(--h-ink-soft);
+      }
+
+      .field > legend {
+        margin-bottom: 8px;
+      }
+
+      .field input {
+        width: 100%;
+        min-width: 0;
+        min-height: 50px;
+        padding: 0 14px;
+        border: 1px solid var(--h-line);
+        border-radius: 16px;
+        background: var(--h-canvas);
+        color: var(--h-ink);
+        font-size: 0.92rem;
+        font-weight: 600;
+      }
+
+      .field input::placeholder {
+        color: var(--h-muted);
+        font-weight: 500;
+      }
+
+      /* Beat the global input:not(…):focus ring (0,5,1). No :host here — the
+         sheet is rendered outside the host; the scoping attributes give 0,6,1. */
+      .custom-modal .field input:focus {
+        outline: none;
+        border-color: var(--h-accent);
+        box-shadow: 0 0 0 4px var(--h-accent-glow);
+      }
+
+      .field-row {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+      }
+
+      .repeat-chips {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 6px;
+      }
+
+      .repeat-chip {
+        display: grid;
+        justify-items: center;
+        gap: 2px;
+        padding: 10px 4px;
+        border: 1px solid var(--h-line);
+        border-radius: 16px;
+        background: var(--h-canvas);
+        color: var(--h-ink-soft);
+        font-size: 0.74rem;
         font-weight: 800;
+        text-align: center;
+        cursor: pointer;
       }
 
-      .field input,
-      .field select {
-        width: 100%;
-        border: 1px solid #d7e4dc;
-        border-radius: 12px;
-        padding: 0.8rem 0.9rem;
-        font: inherit;
-        color: #173727;
-        background: #fff;
+      .repeat-chip > span {
+        font-size: 1.15rem;
       }
 
-      .option-card {
-        width: 100%;
-        border-radius: 18px;
+      .repeat-chip--active {
+        border-color: var(--h-btn-bg);
+        background: var(--h-btn-bg);
+        color: var(--h-btn-fg);
+      }
+
+      .repeat-chip:has(input:focus-visible) {
+        outline: 3px solid var(--h-accent-glow);
+        outline-offset: 2px;
+      }
+
+      .custom-modal__summary {
+        margin: 0;
         display: flex;
         align-items: center;
-        justify-content: space-between;
-        text-align: left;
-      }
-
-      .option-card strong {
-        color: #173727;
-        display: block;
-      }
-
-      .option-card span {
-        color: #647a6d;
-        font-size: 0.84rem;
-      }
-
-      .option-card--active {
-        border-color: #0a8f5b;
-        box-shadow: 0 14px 28px rgba(10, 143, 91, 0.1);
-      }
-
-      .option-radio {
-        width: 1.1rem;
-        height: 1.1rem;
-        border-radius: 50%;
-        border: 2px solid #c4d3cb;
-      }
-
-      .option-card--active .option-radio {
-        border-color: #0a8f5b;
-        background: radial-gradient(circle, #0a8f5b 0 45%, transparent 46%);
-      }
-
-      .custom-modal__footer {
-        flex: 0 0 auto;
-        background: linear-gradient(135deg, #f1f7f3 0%, #e3efe8 100%);
-        border: 1px solid #d2e3d8;
+        gap: 10px;
+        padding: 12px 14px;
         border-radius: 16px;
-        box-shadow: 0 -8px 24px rgba(7, 61, 39, 0.06);
-        padding: 0.85rem 0.85rem calc(1rem + env(safe-area-inset-bottom, 0px));
+        background: var(--h-tile-3);
+        color: var(--h-ink);
+        font-size: 0.84rem;
+        font-weight: 700;
       }
 
       .modal-actions {
         display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 0.7rem;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr);
+        gap: 10px;
       }
 
       .ghost-btn,
       .save-btn {
-        min-height: 3rem;
+        min-height: 52px;
         border-radius: 999px;
+        font-size: 0.95rem;
         font-weight: 800;
       }
 
       .ghost-btn {
-        border: 1px solid #0a8f5b;
-        background: #fff;
-        color: #0a8f5b;
+        border: 1px solid var(--h-line);
+        background: var(--h-surface);
+        color: var(--h-ink);
       }
 
       .save-btn {
         border: none;
-        background: #0a8f5b;
-        color: #fff;
+        background: var(--h-accent);
+        color: #ffffff;
+        box-shadow: 0 12px 24px -12px var(--h-accent-glow);
       }
 
       .save-btn:disabled {
-        opacity: 0.55;
+        opacity: 0.45;
+        box-shadow: none;
       }
 
-      @media (max-width: 560px) {
-        .hero {
-          padding-inline: 0.8rem;
-        }
+      /* Snooze options */
+      .option-list {
+        display: grid;
+        gap: 8px;
+      }
 
+      .option-card {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 12px 14px;
+        border: 1px solid var(--h-line);
+        border-radius: 18px;
+        background: var(--h-surface);
+        color: var(--h-ink);
+        text-align: left;
+      }
+
+      .option-card > div {
+        display: grid;
+        gap: 2px;
+      }
+
+      .option-card strong {
+        font-size: 0.92rem;
+        font-weight: 800;
+      }
+
+      .option-card span {
+        font-size: 0.74rem;
+        color: var(--h-muted);
+      }
+
+      .option-radio {
+        width: 22px;
+        height: 22px;
+        flex-shrink: 0;
+        border-radius: 50%;
+        border: 2px solid color-mix(in srgb, var(--h-muted) 60%, transparent);
+      }
+
+      .option-card--active {
+        border-color: var(--h-accent);
+        box-shadow: 0 0 0 3px var(--h-accent-glow);
+      }
+
+      .option-card--active .option-radio {
+        border: 6px solid var(--h-accent);
+      }
+
+      @media (max-width: 370px) {
         .stats-panel {
-          gap: 0.4rem;
-          padding: 0.65rem;
+          gap: 6px;
         }
 
-        .stat-tile {
-          min-height: 5.6rem;
-          padding-inline: 0.2rem;
+        .stat-tile__label {
+          font-size: 0.58rem;
         }
 
-        .stat-tile__icon-wrap {
-          width: 2.2rem;
-          height: 2.2rem;
-          font-size: 0.95rem;
+        .state-tab {
+          font-size: 0.72rem;
         }
+      }
 
-        .action-btn {
-          font-size: 0.8rem;
-          padding-inline: 0.7rem;
-        }
-
-        .reminder-card__top {
-          display: grid;
-          grid-template-columns: minmax(0, 1fr);
-          gap: 0.8rem;
-        }
-
-        .reminder-card__status-col {
-          align-items: flex-start;
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          transition: none !important;
         }
       }
     `
@@ -1210,8 +1261,10 @@ export class RemindersPage {
   private readonly platform = inject(Platform);
   private readonly router = inject(Router);
   private readonly formBuilder = inject(FormBuilder);
+  private readonly navigationHistory = inject(NavigationHistoryService);
 
   protected readonly bellIcon = notificationsSharp;
+  protected readonly backIcon = arrowBackOutline;
   protected readonly addIcon = addOutline;
   protected readonly chevronDownIcon = chevronDownOutline;
   protected readonly calendarIcon = calendarOutline;
@@ -1315,6 +1368,56 @@ export class RemindersPage {
     });
 
     this.destroyRef.onDestroy(() => subscription.unsubscribe());
+  }
+
+  protected goBack(): void {
+    void this.navigationHistory.back('/tabs/settings');
+  }
+
+  /** Decorative emoji for each reminder type / category tile. */
+  protected typeEmoji(type: ReminderTab): string {
+    switch (type) {
+      case 'expiry':
+        return '⏳';
+      case 'low-stock':
+        return '📉';
+      case 'budget':
+        return '💰';
+      case 'cart':
+        return '🛒';
+      case 'custom':
+        return '🔔';
+      default:
+        return '🗂️';
+    }
+  }
+
+  protected recurrenceEmoji(recurrence: ReminderRecurrence): string {
+    switch (recurrence) {
+      case 'daily':
+        return '☀️';
+      case 'weekly':
+        return '🗓️';
+      case 'monthly':
+        return '📆';
+      default:
+        return '1️⃣';
+    }
+  }
+
+  /** Human summary of the reminder being created, e.g. "Mon, 16 Nov at 09:00 · Weekly". */
+  protected customReminderSummary(): string {
+    const { date, time, recurrence } = this.customForm.getRawValue();
+    const label = this.recurrenceOptions.find((option) => option.value === recurrence)?.label ?? 'One Time';
+    if (!date) {
+      return 'Pick a date for this reminder.';
+    }
+    const when = new Date(`${date}T${time || '09:00'}:00`);
+    if (Number.isNaN(when.getTime())) {
+      return label;
+    }
+    const day = when.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
+    return `Reminds you ${day}${time ? ' at ' + time : ''} · ${label}`;
   }
 
   protected selectState(state: ReminderLifecycleView): void {

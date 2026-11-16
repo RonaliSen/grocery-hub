@@ -2,7 +2,9 @@ import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@a
 import { Router, RouterLink } from '@angular/router';
 import { IonContent } from '@ionic/angular/standalone';
 
+import { FallbackImageDirective } from '../../../shared/directives/fallback-image.directive';
 import { PantryCategory } from '../../pantry/models/pantry-item.model';
+import { PantryImagePipe } from '../../pantry/pipes/pantry-image.pipe';
 import { PantryStateService } from '../../pantry/services/pantry-state.service';
 import { SettingsService } from '../../settings/services/settings.service';
 import { ShoppingListStateService } from '../../shopping-list/services/shopping-list-state.service';
@@ -17,13 +19,16 @@ interface FeaturedProduct {
 }
 
 const CATEGORY_PILLS = [
-  { label: 'All Items', value: 'all' },
-  { label: 'Vegetables', value: 'vegetables' },
-  { label: 'Fruits', value: 'fruits' },
-  { label: 'Dairy & Eggs', value: 'dairy' },
-  { label: 'Meat & Fish', value: 'meat' },
-  { label: 'Bakery', value: 'bakery' },
+  { label: 'All Items', value: 'all', emoji: '🛒' },
+  { label: 'Vegetables', value: 'vegetables', emoji: '🥦' },
+  { label: 'Fruits', value: 'fruits', emoji: '🍓' },
+  { label: 'Dairy & Eggs', value: 'dairy', emoji: '🥛' },
+  { label: 'Meat & Fish', value: 'meat', emoji: '🐟' },
+  { label: 'Bakery', value: 'bakery', emoji: '🥐' },
 ] as const;
+
+/** Number of `--h-tile-N` colour tokens defined in the Home styles. */
+const HOME_TILE_COUNT = 6;
 
 const POPULAR_PRODUCTS: readonly FeaturedProduct[] = [
   {
@@ -85,45 +90,56 @@ const POPULAR_PRODUCTS: readonly FeaturedProduct[] = [
 @Component({
   selector: 'app-home-page',
   standalone: true,
-  imports: [IonContent, RouterLink],
+  host: { class: 'theme-citrus' },
+  imports: [FallbackImageDirective, IonContent, PantryImagePipe, RouterLink],
   template: `
     <ion-content [fullscreen]="true">
       <header class="top-appbar">
-        <div class="brand-wrap">
-          <div class="avatar-ring">
-            @if (profilePhotoDataUrl()) {
-              <img [src]="profilePhotoDataUrl()!" alt="Profile photo" />
-            } @else {
-              <img src="/brand/my-grocery-logo.svg" alt="My Grocery logo" />
-            }
-          </div>
-          <div>
-            <p class="brand-title">Grocery Hub</p>
-            <p class="brand-subtitle">{{ greeting() }}</p>
-          </div>
+        <div class="brand-chip">
+          <img class="brand-logo" src="/brand/my-grocery-logo.svg" alt="My Grocery logo" />
+          <p class="brand-title">Grocery Hub</p>
         </div>
         <button
           type="button"
-          class="appbar-icon"
+          class="profile-btn"
           [routerLink]="['/tabs/profile']"
           aria-label="Open profile"
         >
-          <span class="material-symbols-outlined">person</span>
+          @if (profilePhotoDataUrl()) {
+            <img [src]="profilePhotoDataUrl()!" alt="Profile photo" />
+          } @else {
+            <span class="material-symbols-outlined" aria-hidden="true">person</span>
+          }
         </button>
       </header>
 
       <main class="home-redesign">
+        <section class="intro">
+          <h1 class="greeting">{{ greeting() }}</h1>
+          <p class="intro-sub">What's going in your basket today?</p>
+        </section>
+
+        <div class="search-wrap" role="search">
+          <span class="search-icon material-symbols-outlined" aria-hidden="true">search</span>
+          <input
+            type="search"
+            [value]="searchText()"
+            placeholder="Search fresh products..."
+            aria-label="Search fresh products"
+            (input)="onSearchInput($event)"
+          />
+        </div>
+
         <section class="hero-card">
-          <div class="hero-glow hero-glow--top" aria-hidden="true"></div>
-          <div class="hero-glow hero-glow--bottom" aria-hidden="true"></div>
+          <div class="hero-dots" aria-hidden="true"></div>
           <div class="hero-copy">
             <p class="hero-eyebrow">Fresh grocery picks</p>
-            <h2>Add fresh products to your basket.</h2>
-            <p>Tap + beside any product to add and increase quantity quickly.</p>
-            <div class="hero-actions">
-              <button type="button" [routerLink]="['/tabs/pantry']">Shop Now</button>
-              <span>Fast add for daily essentials</span>
-            </div>
+            <h2>Add <span class="hero-highlight">fresh</span> products to your basket.</h2>
+            <p class="hero-text">Tap + beside any product to add and increase quantity quickly.</p>
+            <button type="button" class="hero-cta" [routerLink]="['/tabs/pantry']">
+              Shop Now
+              <span class="material-symbols-outlined" aria-hidden="true">arrow_forward</span>
+            </button>
           </div>
           <div class="hero-visual">
             <img
@@ -131,66 +147,88 @@ const POPULAR_PRODUCTS: readonly FeaturedProduct[] = [
               src="https://lh3.googleusercontent.com/aida-public/AB6AXuAOpsUYa28HDxvM_QiuYpjCxwypoDLvJ5frjZR1DsTsunVTHCuH3IM6kSLWya6g3nz7T6ciZN7gKjtTFK3NFcANIgjSrMG7PgmQz-qVkBejOXRJmwbUxpTwZ2Hzafn4X_iSEW5UcVXfXp-SC7VO850yk8f-7Zi8m5p6EHWoi8ISEWLj0j1XhcZSvqiQQjOrmBMYipZA_e1R6CTsVqQO1KSrT1LmrOrW_U5iv4ftEidJFz-V7-dF_2A1Fq5RKpg7EaA6Cm5yvlA-7JXy"
               alt="Fresh fruits"
             />
+            <span class="hero-note">Fast add for daily essentials</span>
           </div>
         </section>
 
-        <nav class="category-pills" aria-label="Product categories">
-          @for (pill of categoryPills; track pill.value) {
-            <button
-              type="button"
-              class="category-pill"
-              [class.category-pill--active]="activeCategory() === pill.value"
-              (click)="setActiveCategory(pill.value)"
-            >
-              {{ pill.label }}
-            </button>
-          }
-        </nav>
-
-        <div class="search-wrap" role="search">
-          <span class="material-symbols-outlined">search</span>
-          <input
-            type="search"
-            [value]="searchText()"
-            placeholder="Search fresh products..."
-            (input)="onSearchInput($event)"
-          />
-        </div>
+        <section class="categories-section">
+          <nav class="category-pills" aria-label="Product categories">
+            @for (pill of categoryPills; track pill.value) {
+              <button
+                type="button"
+                class="category-pill"
+                [class.category-pill--active]="activeCategory() === pill.value"
+                [attr.aria-pressed]="activeCategory() === pill.value"
+                [attr.data-emoji]="pill.emoji"
+                [style.--tile]="tileColor($index, 4)"
+                (click)="setActiveCategory(pill.value)"
+              >
+                {{ pill.label }}
+              </button>
+            }
+          </nav>
+        </section>
 
         <section class="products-section">
           <div class="section-title-row">
-            <h3>Popular Picks</h3>
-            <button type="button" [routerLink]="['/tabs/pantry']">View all</button>
+            <div class="section-heading">
+              <h3>Popular Picks</h3>
+              <p>
+                {{ visibleProducts().length }}
+                {{ visibleProducts().length === 1 ? 'item' : 'items' }}
+              </p>
+            </div>
+            <button type="button" class="view-all-btn" [routerLink]="['/tabs/pantry']">
+              View all
+              <span class="material-symbols-outlined" aria-hidden="true">arrow_outward</span>
+            </button>
           </div>
 
           <div class="product-grid">
             @for (product of visibleProducts(); track product.id) {
-              <article class="product-card" (click)="openProductDetail(product)">
-                <button
-                  type="button"
-                  class="favorite-btn"
-                  aria-label="Favorite item"
-                  (click)="$event.stopPropagation()"
-                >
-                  <span class="material-symbols-outlined">favorite</span>
-                </button>
-
+              @let count = getProductCount(product);
+              <article
+                class="product-card"
+                [class.product-card--in-cart]="count > 0"
+                [style.--tile]="tileColor($index)"
+                (click)="openProductDetail(product)"
+              >
                 <div class="product-image-wrap">
-                  <img [src]="product.image" [alt]="product.name" />
+                  <img
+                    [src]="product.image"
+                    [appFallbackImage]="product | pantryImage: 'fallback'"
+                    [alt]="product.name"
+                    loading="lazy"
+                    decoding="async"
+                  />
+                  <button
+                    type="button"
+                    class="favorite-btn"
+                    aria-label="Favorite item"
+                    (click)="$event.stopPropagation()"
+                  >
+                    <span class="material-symbols-outlined" aria-hidden="true">favorite</span>
+                  </button>
                 </div>
 
-                <div class="product-title-row">
-                  <h4>{{ product.name }}</h4>
-                  <div class="actions-wrap">
-                    @if (getProductCount(product) > 0) {
+                <div class="product-body">
+                  <div class="product-info">
+                    <h4>{{ product.name }}</h4>
+                    <p class="product-pack">{{ product.pack }}</p>
+                  </div>
+                  <div class="actions-wrap" [class.actions-wrap--stepper]="count > 0">
+                    @if (count > 0) {
                       <button
                         type="button"
                         class="remove-btn"
                         (click)="onRemoveClick($event, product)"
                         aria-label="Remove item"
                       >
-                        <span class="material-symbols-outlined">remove</span>
+                        <span class="material-symbols-outlined" aria-hidden="true">remove</span>
                       </button>
+                      <span class="added-count" aria-live="polite">
+                        <span class="visually-hidden">Added: </span>{{ count }}
+                      </span>
                     }
                     <button
                       type="button"
@@ -198,17 +236,16 @@ const POPULAR_PRODUCTS: readonly FeaturedProduct[] = [
                       (click)="onAddClick($event, product)"
                       aria-label="Add item"
                     >
-                      <span class="material-symbols-outlined">add</span>
+                      <span class="material-symbols-outlined" aria-hidden="true">add</span>
                     </button>
                   </div>
                 </div>
-                <p>{{ product.pack }}</p>
-                @if (getProductCount(product) > 0) {
-                  <p class="added-count">Added: {{ getProductCount(product) }}</p>
-                }
               </article>
             } @empty {
-              <p class="empty-products">No products match this filter.</p>
+              <div class="empty-products">
+                <span class="empty-emoji" aria-hidden="true">🧺</span>
+                <p>No products match this filter.</p>
+              </div>
             }
           </div>
         </section>
@@ -217,9 +254,35 @@ const POPULAR_PRODUCTS: readonly FeaturedProduct[] = [
   `,
   styles: [
     `
+      /* Home — "Citrus & Ink". Design tokens (--h-*) come from the shared
+         .theme-citrus class in src/theme/citrus.scss. */
       :host {
         display: block;
       }
+
+      ion-content::part(background) {
+        background: var(--h-canvas);
+      }
+
+      .visually-hidden {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip-path: inset(50%);
+        white-space: nowrap;
+      }
+
+      /* overflow: hidden — until the icon font loads, ligature names such as
+         "arrow_forward" render as text; keep them inside their circles. */
+      .material-symbols-outlined {
+        font-size: 20px;
+        line-height: 1;
+        overflow: hidden;
+      }
+
+
+      /* ---------------- App bar ---------------- */
 
       .top-appbar {
         position: sticky;
@@ -228,190 +291,331 @@ const POPULAR_PRODUCTS: readonly FeaturedProduct[] = [
         display: flex;
         align-items: center;
         justify-content: space-between;
-        gap: 10px;
-        padding:
-          calc(env(safe-area-inset-top, 0) + var(--app-header-block-start))
-          var(--app-page-gutter)
-          var(--app-header-block-end);
-        background: rgba(248, 255, 252, 0.8);
-        backdrop-filter: blur(12px);
-      }
-
-      .brand-wrap {
-        display: flex;
-        align-items: center;
         gap: 12px;
+        padding:
+          calc(env(safe-area-inset-top, 0px) + 12px)
+          var(--h-gutter)
+          10px;
+        padding-inline: max(
+          var(--h-gutter),
+          calc((100% - var(--app-mobile-max-width)) / 2 + var(--h-gutter))
+        );
+        background: color-mix(in srgb, var(--h-canvas) 84%, transparent);
+        backdrop-filter: blur(18px);
       }
 
-      .avatar-ring {
-        width: 42px;
-        height: 42px;
+      .brand-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 5px 14px 5px 5px;
+        border-radius: 999px;
+        background: var(--h-surface);
+        border: 1px solid var(--h-line);
+      }
+
+      .brand-logo {
+        width: 30px;
+        height: 30px;
         border-radius: 50%;
-        overflow: hidden;
-        border: 2px solid #43c98a;
-        background: #ffffff;
-      }
-
-      .avatar-ring img {
-        width: 100%;
-        height: 100%;
         object-fit: cover;
       }
 
       .brand-title {
         margin: 0;
-        font-family: 'Plus Jakarta Sans', 'Manrope', sans-serif;
-        font-size: 1.2rem;
+        font-family: var(--h-display);
+        font-size: 0.92rem;
         font-weight: 800;
-        color: #0a8f5b;
+        letter-spacing: -0.02em;
+        color: var(--h-ink);
       }
 
-      .brand-subtitle {
-        margin: 2px 0 0;
-        font-size: 0.74rem;
-        font-weight: 600;
-        color: var(--app-text-muted);
-      }
-
-      .appbar-icon {
-        width: 40px;
-        height: 40px;
-        border-radius: 999px;
-        border: none;
-        background: var(--app-surface);
-        color: #0a8f5b;
+      .profile-btn {
+        width: 44px;
+        height: 44px;
+        padding: 0;
+        overflow: hidden;
+        border-radius: 50%;
+        border: 2px solid var(--h-surface);
+        outline: 2px solid var(--h-accent);
+        outline-offset: 0;
+        background: var(--h-sun);
+        color: #16141d;
         display: inline-flex;
         align-items: center;
         justify-content: center;
+        transition: transform 160ms ease;
       }
+
+      .profile-btn img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+
+      .profile-btn:active {
+        transform: scale(0.93);
+      }
+
+      /* ---------------- Layout ---------------- */
 
       .home-redesign {
         width: min(100%, var(--app-mobile-max-width));
         margin: 0 auto;
-        padding: 10px var(--app-page-gutter) var(--app-shell-bottom-space);
+        padding: 8px var(--h-gutter) var(--app-shell-bottom-space);
         display: grid;
-        gap: clamp(16px, 3vw, 22px);
+        /* minmax(0, …) stops the horizontally scrolling category row from
+           stretching the whole page wider than the viewport. */
+        grid-template-columns: minmax(0, 1fr);
+        gap: 20px;
+        color: var(--h-ink);
       }
 
-      .hero-card {
+      /* ---------------- Greeting ---------------- */
+
+      .intro {
+        padding-top: 4px;
+      }
+
+      .greeting {
+        margin: 0;
+        font-size: clamp(1.85rem, 6.4vw, 2.5rem);
+        font-weight: 800;
+        line-height: 1.05;
+        letter-spacing: -0.035em;
+        color: var(--h-ink);
+      }
+
+      .greeting::after {
+        content: ' 👋' / '';
+      }
+
+      .intro-sub {
+        margin: 8px 0 0;
+        font-size: 0.95rem;
+        font-weight: 500;
+        color: var(--h-muted);
+      }
+
+      /* ---------------- Search ---------------- */
+
+      .search-wrap {
         position: relative;
-        min-height: clamp(168px, 24vw, 210px);
-        border-radius: var(--app-card-radius-fluid);
-        overflow: hidden;
-        background:
-          linear-gradient(145deg, #e9fff2 0%, #c6f4d7 38%, #78d6a1 100%);
-        border: 1px solid rgba(54, 150, 98, 0.18);
-        box-shadow: 0 18px 30px rgba(55, 122, 83, 0.12);
-        padding: clamp(16px, 2.6vw, 22px);
-        color: #ffffff;
-        display: grid;
-        grid-template-columns: minmax(0, 1.2fr) minmax(120px, 0.8fr);
+        display: flex;
         align-items: center;
-        gap: 12px;
+        height: 56px;
+        border-radius: 999px;
+        border: 1px solid var(--h-line);
+        background: var(--h-surface);
+        box-shadow: var(--h-shadow);
       }
 
-      .hero-glow {
+      .search-wrap:focus-within {
+        border-color: var(--h-accent);
+        box-shadow: 0 0 0 4px var(--h-accent-glow);
+      }
+
+      .search-icon {
         position: absolute;
-        border-radius: 999px;
-        background: rgba(255, 255, 255, 0.4);
-        filter: blur(6px);
+        left: 8px;
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background: var(--h-accent);
+        color: #ffffff;
         pointer-events: none;
       }
 
-      .hero-glow--top {
-        top: -34px;
-        right: 52px;
-        width: 130px;
-        height: 130px;
+      .search-wrap input {
+        width: 100%;
+        height: 100%;
+        border: none;
+        border-radius: inherit;
+        background: transparent;
+        padding: 0 20px 0 60px;
+        font-size: 0.95rem;
+        font-weight: 600;
+        color: var(--h-ink);
       }
 
-      .hero-glow--bottom {
-        bottom: -52px;
-        left: 46%;
-        width: 170px;
-        height: 120px;
-        background: rgba(9, 135, 83, 0.16);
+      /* Beat the global input:not(…):focus ring (specificity 0,5,1) so only
+         the wrapper's tangerine focus ring shows. */
+      :host .search-wrap input[type='search']:focus {
+        box-shadow: none;
+      }
+
+      .search-wrap input::placeholder {
+        color: var(--h-muted);
+        font-weight: 500;
+      }
+
+      /* ---------------- Hero ---------------- */
+
+      .hero-card {
+        position: relative;
+        isolation: isolate;
+        overflow: hidden;
+        min-height: 272px;
+        padding: 22px;
+        border-radius: 32px;
+        background:
+          radial-gradient(60% 70% at 100% 100%, rgba(255, 106, 61, 0.55), transparent 70%),
+          radial-gradient(40% 50% at 0% 0%, rgba(201, 184, 255, 0.22), transparent 70%),
+          var(--h-hero-bg);
+        color: #ffffff;
+        outline: 1px solid var(--h-hero-border);
+        outline-offset: -1px;
+        box-shadow: 0 24px 40px -24px rgba(22, 20, 29, 0.6);
+      }
+
+      .hero-dots {
+        position: absolute;
+        z-index: -1;
+        top: 0;
+        right: 0;
+        width: 55%;
+        height: 60%;
+        background-image: radial-gradient(rgba(255, 255, 255, 0.16) 1.2px, transparent 1.4px);
+        background-size: 14px 14px;
+        mask-image: linear-gradient(225deg, #000 10%, transparent 70%);
+        pointer-events: none;
       }
 
       .hero-copy {
         position: relative;
         z-index: 2;
-        width: 100%;
-        color: #173c2a;
+        display: grid;
+        justify-items: start;
       }
 
       .hero-eyebrow {
-        margin: 0 0 8px;
-        font-size: 0.72rem;
+        margin: 0 0 14px;
+        padding: 6px 12px;
+        border-radius: 10px;
+        background: var(--h-lilac);
+        color: #16141d;
+        font-size: 0.68rem;
         font-weight: 800;
         letter-spacing: 0.08em;
         text-transform: uppercase;
-        color: #0c8d59;
+        transform: rotate(-3deg);
+        box-shadow: 0 6px 14px -6px rgba(0, 0, 0, 0.5);
       }
 
       .hero-copy h2 {
         margin: 0;
-        font-size: clamp(1rem, 2.3vw, 1.28rem);
-        line-height: 1.2;
+        max-width: 11ch;
+        font-size: clamp(1.7rem, 6vw, 2.5rem);
         font-weight: 800;
-        color: #173c2a;
+        line-height: 1.04;
+        letter-spacing: -0.035em;
+        color: #ffffff;
       }
 
-      .hero-copy p {
-        margin: 8px 0 0;
-        font-size: clamp(0.78rem, 1.9vw, 0.9rem);
-        line-height: 1.35;
-        color: rgba(23, 60, 42, 0.82);
+      .hero-highlight {
+        color: var(--h-sun);
+        background: linear-gradient(transparent 70%, rgba(255, 209, 92, 0.28) 70%);
       }
 
-      .hero-actions {
-        margin-top: 12px;
-        display: flex;
+      .hero-text {
+        margin: 12px 0 0;
+        /* Leave room for the photo + sticker in the bottom-right corner. */
+        max-width: calc(100% - 144px);
+        font-size: 0.84rem;
+        line-height: 1.45;
+        color: rgba(255, 255, 255, 0.7);
+      }
+
+      .hero-cta {
+        margin-top: 18px;
+        display: inline-flex;
         align-items: center;
         gap: 10px;
-        flex-wrap: wrap;
-      }
-
-      .hero-actions button {
-        min-height: 36px;
-        padding: 0 16px;
+        min-height: 46px;
+        padding: 0 6px 0 20px;
+        border: none;
         border-radius: 999px;
-        border: 1px solid rgba(10, 143, 91, 0.14);
-        font-size: 0.74rem;
-        font-weight: 700;
+        background: var(--h-accent);
         color: #ffffff;
-        background: linear-gradient(135deg, #0f9d61, #0a7d4f);
-        box-shadow: 0 10px 18px rgba(15, 125, 79, 0.22);
+        font-size: 0.9rem;
+        font-weight: 800;
+        box-shadow: 0 12px 24px -10px var(--h-accent-glow);
+        transition: transform 160ms ease;
       }
 
-      .hero-actions span {
-        font-size: 0.72rem;
-        font-weight: 700;
-        color: rgba(23, 60, 42, 0.7);
+      .hero-cta .material-symbols-outlined,
+      .view-all-btn .material-symbols-outlined {
+        width: 34px;
+        height: 34px;
+        border-radius: 50%;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background: #ffffff;
+        color: var(--h-accent);
+        font-size: 18px;
+        transition: transform 160ms ease;
+      }
+
+      .hero-cta:active {
+        transform: scale(0.97);
+        filter: brightness(0.94);
       }
 
       .hero-visual {
-        position: relative;
-        z-index: 2;
-        justify-self: end;
-        width: min(100%, 190px);
-        display: grid;
+        position: absolute;
+        z-index: 1;
+        right: -34px;
+        bottom: -34px;
+        width: 164px;
+        height: 164px;
       }
 
       .hero-image {
+        display: block;
         width: 100%;
-        aspect-ratio: 1 / 1;
+        height: 100%;
         object-fit: cover;
-        object-position: center;
-        border-radius: 22px;
-        border: 3px solid rgba(244, 255, 249, 0.92);
-        box-shadow: 0 16px 28px rgba(12, 86, 54, 0.18);
+        border-radius: 50%;
+        border: 5px solid rgba(255, 255, 255, 0.12);
+        background: rgba(255, 255, 255, 0.1);
+        color: transparent;
       }
+
+      .hero-note {
+        position: absolute;
+        top: -6px;
+        left: -14px;
+        width: 78px;
+        height: 78px;
+        padding: 10px;
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        text-align: center;
+        background: var(--h-sun);
+        color: #16141d;
+        font-size: 0.56rem;
+        font-weight: 800;
+        line-height: 1.15;
+        text-transform: uppercase;
+        transform: rotate(-12deg);
+        box-shadow: 0 8px 18px -6px rgba(0, 0, 0, 0.45);
+      }
+
+      /* ---------------- Categories ---------------- */
 
       .category-pills {
         display: flex;
         gap: 10px;
+        margin: -4px calc(var(--h-gutter) * -1);
+        padding: 4px var(--h-gutter);
+        scroll-padding-inline: var(--h-gutter);
         overflow-x: auto;
+        scroll-snap-type: x proximity;
         scrollbar-width: none;
       }
 
@@ -420,299 +624,389 @@ const POPULAR_PRODUCTS: readonly FeaturedProduct[] = [
       }
 
       .category-pill {
-        flex-shrink: 0;
-        padding: 8px 16px;
-        border-radius: 999px;
+        flex: 0 0 auto;
+        scroll-snap-align: start;
+        width: 78px;
+        padding: 0;
+        display: grid;
+        justify-items: center;
+        gap: 8px;
         border: none;
-        font-size: 0.82rem;
+        background: transparent;
+        font-size: 0.74rem;
         font-weight: 700;
-        color: #42584b;
-        background: #e8f5ed;
+        line-height: 1.15;
+        text-align: center;
+        color: var(--h-ink-soft);
       }
+
+      /* Emoji bubble — generated content keeps the button's text (and its
+         accessible name) as just the category label. */
+      .category-pill::before {
+        content: attr(data-emoji);
+        content: attr(data-emoji) / '';
+        width: 64px;
+        height: 64px;
+        border-radius: 22px;
+        display: grid;
+        place-items: center;
+        font-size: 1.85rem;
+        background: var(--tile, var(--h-surface));
+        border: 1px solid var(--h-line);
+        transition:
+          transform 180ms ease,
+          background-color 180ms ease,
+          box-shadow 180ms ease;
+      }
+
 
       .category-pill--active {
-        color: #ffffff;
-        background: #0a8f5b;
-      }
-
-      .search-wrap {
-        position: relative;
-      }
-
-      .search-wrap span {
-        position: absolute;
-        left: 12px;
-        top: 50%;
-        transform: translateY(-50%);
-        color: #6d8577;
-      }
-
-      .search-wrap input {
-        width: 100%;
-        height: 52px;
-        border-radius: 14px;
-        border: 1px solid #bfdcc4;
-        background: rgba(255, 255, 255, 0.88);
-        padding: 0 14px 0 44px;
-        font-size: 0.92rem;
-        color: #223b30;
-      }
-
-      .section-title-row {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        margin-bottom: 10px;
-      }
-
-      .section-title-row h3 {
-        margin: 0;
-        font-size: 1.1rem;
+        color: var(--h-ink);
         font-weight: 800;
       }
 
-      .section-title-row button {
-        border: none;
-        background: transparent;
-        color: #0a8f5b;
-        font-size: 0.78rem;
-        font-weight: 700;
+      .category-pill--active::before {
+        background: var(--h-accent);
+        border-color: var(--h-accent);
+        transform: translateY(-2px) rotate(-4deg);
+        box-shadow: 0 12px 20px -10px var(--h-accent-glow);
       }
+
+      .category-pill:active::before {
+        transform: scale(0.94);
+      }
+
+      /* ---------------- Section heading ---------------- */
+
+      .section-title-row {
+        display: flex;
+        align-items: flex-end;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 14px;
+      }
+
+      .section-heading h3 {
+        margin: 0;
+        font-size: 1.5rem;
+        font-weight: 800;
+        letter-spacing: -0.03em;
+        line-height: 1.1;
+        color: var(--h-ink);
+      }
+
+      .section-heading p {
+        margin: 4px 0 0;
+        font-size: 0.78rem;
+        font-weight: 600;
+        color: var(--h-muted);
+      }
+
+      .view-all-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        min-height: 38px;
+        padding: 0 6px 0 14px;
+        border: 1px solid var(--h-line);
+        border-radius: 999px;
+        background: var(--h-surface);
+        color: var(--h-ink);
+        font-size: 0.8rem;
+        font-weight: 800;
+      }
+
+      .view-all-btn .material-symbols-outlined {
+        width: 28px;
+        height: 28px;
+        background: var(--h-btn-bg);
+        color: var(--h-btn-fg);
+      }
+
+      /* ---------------- Product grid (staggered) ---------------- */
 
       .product-grid {
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 12px;
+        align-items: start;
+        gap: 14px 12px;
+        padding-bottom: var(--h-stagger);
+      }
+
+      /* Offset every other column for a relaxed, editorial rhythm.
+         'top' is used (not transform) so hover/press transforms still work. */
+      .product-card:nth-child(even) {
+        top: var(--h-stagger);
       }
 
       .product-card {
         position: relative;
-        padding: 10px;
-        border-radius: 14px;
-        border: 1px solid #d5ecd8;
-        background: rgba(255, 255, 255, 0.9);
+        display: flex;
+        flex-direction: column;
+        padding: 8px;
+        border-radius: 28px;
+        background: var(--tile, var(--h-tile-1));
+        cursor: pointer;
+        transition:
+          transform 200ms ease,
+          box-shadow 200ms ease;
+      }
+
+
+      .product-card:active {
+        transform: scale(0.98);
+      }
+
+      .product-card--in-cart {
+        outline: 2px solid var(--h-ink);
+      }
+
+      .product-image-wrap {
+        position: relative;
+        width: 100%;
+        aspect-ratio: 1 / 1;
+        border-radius: 22px;
+        overflow: hidden;
+        background: rgba(255, 255, 255, 0.5);
+      }
+
+      .product-image-wrap img {
+        display: block;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        color: transparent;
+        transition: transform 400ms ease;
       }
 
       .favorite-btn {
         position: absolute;
         top: 8px;
         right: 8px;
-        width: 30px;
-        height: 30px;
-        border-radius: 999px;
+        width: 32px;
+        height: 32px;
+        padding: 0;
+        overflow: hidden;
+        border-radius: 50%;
         border: none;
-        background: rgba(255, 255, 255, 0.96);
-        color: #cf2e4a;
+        background: rgba(255, 255, 255, 0.92);
+        color: var(--h-accent);
         display: inline-flex;
         align-items: center;
         justify-content: center;
+        box-shadow: 0 4px 10px -4px rgba(0, 0, 0, 0.3);
       }
 
       .favorite-btn .material-symbols-outlined {
         font-size: 18px;
       }
 
-      .product-image-wrap {
-        width: 100%;
-        aspect-ratio: 1 / 1;
-        border-radius: 10px;
-        overflow: hidden;
-        background: #ecf8f1;
-      }
-
-      .product-image-wrap img {
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-      }
-
-      .product-title-row {
-        margin-top: 10px;
+      .product-body {
         display: flex;
         align-items: center;
         justify-content: space-between;
         gap: 8px;
+        padding: 12px 6px 6px 8px;
+      }
+
+      .product-info {
+        min-width: 0;
       }
 
       .product-card h4 {
         margin: 0;
-        font-size: 0.92rem;
-        font-weight: 700;
-        line-height: 1.3;
+        font-size: 1.02rem;
+        font-weight: 800;
+        line-height: 1.2;
+        letter-spacing: -0.02em;
+        color: var(--h-ink);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
       }
 
-      .product-card p {
-        margin: 0;
+      .product-pack {
+        margin: 3px 0 0;
         font-size: 0.76rem;
-        color: #6e8378;
+        font-weight: 600;
+        color: var(--h-ink-soft);
+      }
+
+      /* When in the cart, the stepper takes a full-width row of its own. */
+      .product-card--in-cart .product-body {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 10px;
       }
 
       .actions-wrap {
+        flex-shrink: 0;
         display: flex;
         align-items: center;
-        gap: 8px;
+        justify-content: space-between;
+        border-radius: 999px;
       }
 
-      .add-btn {
-        width: 32px;
-        height: 32px;
-        min-width: 32px;
-        border-radius: 999px;
+      .actions-wrap--stepper {
+        padding: 4px;
+        background: var(--h-btn-bg);
+      }
+
+      .add-btn,
+      .remove-btn {
+        width: 38px;
+        height: 38px;
+        min-width: 38px;
+        padding: 0;
+        overflow: hidden;
         border: none;
-        color: #f5fff9;
-        background: #0d2b1e;
+        border-radius: 50%;
         display: inline-flex;
         align-items: center;
         justify-content: center;
+        transition:
+          transform 140ms ease,
+          background-color 160ms ease;
       }
 
-      .add-btn .material-symbols-outlined {
-        font-size: 18px;
+      .add-btn {
+        background: var(--h-btn-bg);
+        color: var(--h-btn-fg);
+        box-shadow: 0 8px 16px -8px rgba(22, 20, 29, 0.6);
+      }
+
+      .actions-wrap--stepper .add-btn {
+        width: 32px;
+        height: 32px;
+        min-width: 32px;
+        background: var(--h-accent);
+        color: #ffffff;
+        box-shadow: none;
       }
 
       .remove-btn {
         width: 32px;
         height: 32px;
         min-width: 32px;
-        border-radius: 999px;
-        border: 1px solid #0d2b1e;
-        color: #0d2b1e;
-        background: transparent;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        transition: all 0.2s ease;
+        background: var(--h-remove-bg);
+        color: var(--h-btn-fg);
       }
 
+      .add-btn:active,
       .remove-btn:active {
-        background: rgba(13, 43, 30, 0.08);
-      }
-
-      .remove-btn .material-symbols-outlined {
-        font-size: 18px;
+        transform: scale(0.86);
       }
 
       .added-count {
-        margin-top: 8px;
-        font-size: 0.72rem;
-        font-weight: 700;
-        color: #0a8f5b;
+        flex: 1;
+        text-align: center;
+        font-family: var(--h-display);
+        font-size: 0.95rem;
+        font-weight: 800;
+        font-variant-numeric: tabular-nums;
+        color: var(--h-btn-fg);
       }
+
+      /* ---------------- Empty state ---------------- */
 
       .empty-products {
         grid-column: 1 / -1;
-        margin: 0;
+        display: grid;
+        justify-items: center;
+        gap: 10px;
+        padding: 36px 16px;
+        border-radius: 28px;
+        background: var(--h-surface);
+        border: 2px dashed var(--h-line);
         text-align: center;
-        color: var(--app-text-muted);
-        padding: 24px 8px;
       }
 
-      @media (max-width: 560px) {
-        .top-appbar,
+      .empty-emoji {
+        width: 64px;
+        height: 64px;
+        border-radius: 22px;
+        display: grid;
+        place-items: center;
+        font-size: 2rem;
+        background: var(--h-tile-2);
+        transform: rotate(-6deg);
+      }
+
+      .empty-products p {
+        margin: 0;
+        font-size: 0.9rem;
+        font-weight: 700;
+        color: var(--h-ink-soft);
+      }
+
+      /* ---------------- Pointer hover ---------------- */
+
+      @media (hover: hover) {
+        .product-card:hover {
+          transform: translateY(-4px) rotate(-0.6deg);
+          box-shadow: 0 18px 30px -18px rgba(22, 20, 29, 0.45);
+        }
+
+        .product-card:hover .product-image-wrap img {
+          transform: scale(1.05);
+        }
+
+        .hero-cta:hover .material-symbols-outlined {
+          transform: translateX(3px);
+        }
+      }
+
+      /* ---------------- Responsive ---------------- */
+
+      @media (min-width: 600px) {
         .home-redesign {
-          padding-inline: var(--app-page-gutter-tight);
+          gap: 26px;
         }
 
         .hero-card {
-          min-height: 0;
-          grid-template-columns: 1fr;
-          align-items: start;
-          gap: 8px;
-          padding: 14px;
-        }
-
-        .hero-copy {
-          width: 100%;
+          min-height: 300px;
+          padding: 34px;
         }
 
         .hero-visual {
-          justify-self: stretch;
-          width: 100%;
-          grid-template-columns: minmax(0, 116px);
-          justify-content: end;
-        }
-
-        .hero-image {
-          max-width: 116px;
-          border-width: 2px;
-          border-radius: 18px;
-        }
-
-        .hero-copy h2 {
-          max-width: 16ch;
-        }
-
-        .hero-copy p {
-          max-width: 28ch;
-        }
-
-        .hero-actions {
-          gap: 8px;
-        }
-
-        .hero-actions span {
-          font-size: 0.68rem;
-        }
-      }
-
-      @media (max-width: 420px) {
-        .hero-card {
-          min-height: 176px;
-          padding: 14px 14px 12px;
-        }
-
-        .hero-copy {
-          max-width: calc(100% - 118px);
-        }
-
-        .hero-copy h2 {
-          font-size: 1rem;
-        }
-
-        .hero-copy p {
-          font-size: 0.76rem;
-          line-height: 1.3;
-        }
-
-        .hero-actions {
-          margin-top: 10px;
-        }
-
-        .hero-actions button {
-          min-height: 32px;
-          padding: 0 14px;
-          font-size: 0.71rem;
-        }
-
-        .hero-actions span {
-          display: none;
-        }
-
-        .hero-visual {
-          position: absolute;
+          right: 24px;
+          bottom: auto;
           top: 50%;
-          right: 14px;
-          width: 104px;
+          width: 220px;
+          height: 220px;
           transform: translateY(-50%);
         }
 
-        .hero-image {
-          max-width: 104px;
-          justify-self: end;
+        .hero-copy h2 {
+          max-width: 14ch;
         }
 
-        .hero-glow--top {
-          right: 8px;
-          width: 96px;
-          height: 96px;
+        .hero-text {
+          max-width: 36ch;
         }
 
-        .hero-glow--bottom {
-          left: auto;
-          right: -12px;
-          bottom: -44px;
-          width: 128px;
+        .hero-note {
+          width: 92px;
           height: 92px;
+          font-size: 0.62rem;
+        }
+
+        .category-pills {
+          gap: 14px;
+        }
+
+        /* Four columns keeps the even-column stagger intact. */
+        .product-grid {
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+          gap: 18px 14px;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          transition: none !important;
         }
       }
     `,
@@ -829,6 +1123,11 @@ export class HomePage {
     });
 
     return item?.quantity ?? 0;
+  }
+
+  /** Pastel tile colour (one of six theme tokens) for the item at `index`. */
+  protected tileColor(index: number, offset = 0): string {
+    return `var(--h-tile-${((index + offset) % HOME_TILE_COUNT) + 1})`;
   }
 
   private normalizeName(name: string): string {

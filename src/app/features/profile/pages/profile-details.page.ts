@@ -1,7 +1,18 @@
 import { ChangeDetectionStrategy, Component, ElementRef, ViewChild, computed, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router } from '@angular/router';
-import { IonContent } from '@ionic/angular/standalone';
+import { IonContent, IonIcon } from '@ionic/angular/standalone';
+import {
+  arrowBackOutline,
+  calendarOutline,
+  cameraOutline,
+  chevronDownOutline,
+  closeOutline,
+  mailOutline,
+  notificationsOutline,
+  peopleOutline,
+  personOutline,
+} from 'ionicons/icons';
 
 import { UserProfile } from '../../settings/models/profile.model';
 import { SettingsService } from '../../settings/services/settings.service';
@@ -10,25 +21,30 @@ import { NavigationHistoryService } from '../../../core/services/navigation-hist
 @Component({
   selector: 'app-profile-details-page',
   standalone: true,
-  imports: [IonContent, ReactiveFormsModule],
+  host: { class: 'theme-citrus' },
+  imports: [IonContent, IonIcon, ReactiveFormsModule],
   template: `
     <ion-content [fullscreen]="true" class="profile-content">
       <div class="profile-page">
         <header class="profile-header">
           <button type="button" class="profile-header__action" aria-label="Go back" (click)="goBack()">
-            <span aria-hidden="true" class="material-symbols-outlined">arrow_back</span>
+            <ion-icon aria-hidden="true" [icon]="backIcon" />
           </button>
 
-          <h1 class="profile-header__title">Personal Info</h1>
+          <div class="profile-header__text">
+            <h1 class="profile-header__title">Personal Info</h1>
+            <p>Edit your profile</p>
+          </div>
 
           <button type="button" class="profile-header__action" aria-label="Notifications">
-            <span aria-hidden="true" class="material-symbols-outlined">notifications</span>
+            <ion-icon aria-hidden="true" [icon]="bellIcon" />
           </button>
         </header>
 
         <main class="profile-main">
           <form id="profile-form" class="profile-form" [formGroup]="form" (ngSubmit)="save()">
             <section class="profile-hero" aria-label="Profile summary">
+              <div class="hero-dots" aria-hidden="true"></div>
               <div class="profile-hero__avatar-wrap">
                 <div
                   class="profile-hero__avatar"
@@ -40,9 +56,13 @@ import { NavigationHistoryService } from '../../../core/services/navigation-hist
                   (click)="openPhotoViewer()"
                   (keydown.enter)="openPhotoViewer()"
                   (keydown.space)="openPhotoViewer(); $event.preventDefault()"
-                ></div>
+                >
+                  @if (!photoDataUrl()) {
+                    <span class="profile-hero__placeholder" aria-hidden="true">🙂</span>
+                  }
+                </div>
                 <button type="button" class="profile-hero__edit" aria-label="Edit profile photo" (click)="openGalleryPicker()">
-                  <span aria-hidden="true" class="material-symbols-outlined">edit</span>
+                  <ion-icon aria-hidden="true" [icon]="cameraIcon" />
                 </button>
                 <input
                   #avatarPicker
@@ -52,71 +72,88 @@ import { NavigationHistoryService } from '../../../core/services/navigation-hist
                   (change)="onAvatarFileSelected($event)"
                 />
               </div>
-              <h2 class="profile-hero__name">{{ form.controls.fullName.value || 'Your Name' }}</h2>
+              <div class="profile-hero__identity">
+                <p class="profile-hero__eyebrow">Your profile</p>
+                <h2 class="profile-hero__name">{{ form.controls.fullName.value || 'Your Name' }}</h2>
+                <p class="profile-hero__hint">{{ form.controls.email.value || 'Tap the camera to change your photo' }}</p>
+              </div>
             </section>
 
             <section class="profile-fields">
+              <header class="profile-fields__head">
+                <span class="profile-fields__icon" aria-hidden="true">🪪</span>
+                <div>
+                  <h3>About you</h3>
+                  <p>Used to personalise your grocery planning.</p>
+                </div>
+              </header>
+
               <label class="profile-card" for="fullName">
                 <span class="profile-card__label">Name</span>
                 <span class="profile-card__input-wrap">
-                  <input id="fullName" class="profile-card__input" formControlName="fullName" type="text" />
-                  <span aria-hidden="true" class="material-symbols-outlined profile-card__icon">person</span>
+                  <span class="profile-card__icon" aria-hidden="true"><ion-icon [icon]="personIcon" /></span>
+                  <input id="fullName" class="profile-card__input" formControlName="fullName" type="text" placeholder="Your full name" />
                 </span>
                 @if (showError('fullName')) {
                   <p class="profile-card__error">{{ errorMessage('fullName') }}</p>
                 }
               </label>
 
-              <label class="profile-card" for="age">
-                <span class="profile-card__label">Age</span>
-                <span class="profile-card__input-wrap">
-                  <input
-                    id="age"
-                    class="profile-card__input"
-                    formControlName="age"
-                    inputmode="numeric"
-                    min="13"
-                    max="120"
-                    type="number"
-                  />
-                  <span aria-hidden="true" class="material-symbols-outlined profile-card__icon">calendar_month</span>
-                </span>
-                @if (showError('age')) {
-                  <p class="profile-card__error">{{ errorMessage('age') }}</p>
-                }
-              </label>
+              <div class="profile-fields__row">
+                <label class="profile-card" for="age">
+                  <span class="profile-card__label">Age</span>
+                  <span class="profile-card__input-wrap">
+                    <span class="profile-card__icon" aria-hidden="true"><ion-icon [icon]="calendarIcon" /></span>
+                    <input
+                      id="age"
+                      class="profile-card__input"
+                      formControlName="age"
+                      inputmode="numeric"
+                      min="13"
+                      max="120"
+                      type="number"
+                      placeholder="—"
+                    />
+                  </span>
+                  @if (showError('age')) {
+                    <p class="profile-card__error">{{ errorMessage('age') }}</p>
+                  }
+                </label>
+
+                <label class="profile-card" for="householdSize">
+                  <span class="profile-card__label">Household Size</span>
+                  <span class="profile-card__input-wrap">
+                    <span class="profile-card__icon" aria-hidden="true"><ion-icon [icon]="peopleIcon" /></span>
+                    <select id="householdSize" class="profile-card__input profile-card__select" formControlName="householdSize">
+                      @for (size of householdSizes; track size) {
+                        <option [ngValue]="size">{{ size }} {{ size === 1 ? 'Person' : 'Persons' }}</option>
+                      }
+                    </select>
+                    <ion-icon aria-hidden="true" [icon]="chevronIcon" class="profile-card__chevron" />
+                  </span>
+                  @if (showError('householdSize')) {
+                    <p class="profile-card__error">{{ errorMessage('householdSize') }}</p>
+                  }
+                </label>
+              </div>
 
               <label class="profile-card" for="email">
                 <span class="profile-card__label">Email Address</span>
                 <span class="profile-card__input-wrap">
-                  <input id="email" class="profile-card__input" formControlName="email" inputmode="email" type="email" />
-                  <span aria-hidden="true" class="material-symbols-outlined profile-card__icon">mail</span>
+                  <span class="profile-card__icon" aria-hidden="true"><ion-icon [icon]="mailIcon" /></span>
+                  <input id="email" class="profile-card__input" formControlName="email" inputmode="email" type="email" placeholder="you@example.com" />
                 </span>
                 @if (showError('email')) {
                   <p class="profile-card__error">{{ errorMessage('email') }}</p>
                 }
               </label>
+            </section>
 
-              <label class="profile-card" for="householdSize">
-                <span class="profile-card__label">Household Size</span>
-                <span class="profile-card__input-wrap profile-card__input-wrap--select">
-                  <select id="householdSize" class="profile-card__input profile-card__select" formControlName="householdSize">
-                    @for (size of householdSizes; track size) {
-                      <option [ngValue]="size">{{ size }} {{ size === 1 ? 'Person' : 'Persons' }}</option>
-                    }
-                  </select>
-                  <span aria-hidden="true" class="material-symbols-outlined profile-card__icon profile-card__icon--arrow">expand_more</span>
-                  <span aria-hidden="true" class="material-symbols-outlined profile-card__icon">groups_2</span>
-                </span>
-                @if (showError('householdSize')) {
-                  <p class="profile-card__error">{{ errorMessage('householdSize') }}</p>
-                }
-              </label>
-
-              <button type="submit" class="app-button--premium-primary profile-save-button" [disabled]="form.invalid || isSaving()">
+            <div class="profile-save-bar">
+              <button type="submit" class="profile-save-button" [disabled]="form.invalid || isSaving()">
                 {{ isSaving() ? 'Saving...' : 'Save Changes' }}
               </button>
-            </section>
+            </div>
           </form>
         </main>
       </div>
@@ -134,43 +171,18 @@ import { NavigationHistoryService } from '../../../core/services/navigation-hist
                 />
               }
             </div>
-
             <label class="crop-control">
               <span>Zoom</span>
-              <input
-                type="range"
-                min="1"
-                max="3"
-                step="0.01"
-                [value]="cropZoom()"
-                (input)="onCropZoomChange($event)"
-              />
+              <input type="range" min="1" max="3" step="0.01" [value]="cropZoom()" (input)="onCropZoomChange($event)" />
             </label>
-
             <label class="crop-control">
               <span>Horizontal</span>
-              <input
-                type="range"
-                min="-100"
-                max="100"
-                step="1"
-                [value]="cropOffsetX()"
-                (input)="onCropOffsetXChange($event)"
-              />
+              <input type="range" min="-100" max="100" step="1" [value]="cropOffsetX()" (input)="onCropOffsetXChange($event)" />
             </label>
-
             <label class="crop-control">
               <span>Vertical</span>
-              <input
-                type="range"
-                min="-100"
-                max="100"
-                step="1"
-                [value]="cropOffsetY()"
-                (input)="onCropOffsetYChange($event)"
-              />
+              <input type="range" min="-100" max="100" step="1" [value]="cropOffsetY()" (input)="onCropOffsetYChange($event)" />
             </label>
-
             <div class="crop-actions">
               <button type="button" class="crop-btn crop-btn--ghost" (click)="cancelCrop()">Cancel</button>
               <button type="button" class="crop-btn crop-btn--primary" (click)="confirmCrop()">Use Photo</button>
@@ -182,7 +194,7 @@ import { NavigationHistoryService } from '../../../core/services/navigation-hist
       @if (photoViewerOpen()) {
         <div class="photo-viewer-overlay" role="dialog" aria-label="Profile photo" (click)="closePhotoViewer()">
           <button type="button" class="photo-viewer-close" aria-label="Close" (click)="closePhotoViewer()">
-            <span aria-hidden="true" class="material-symbols-outlined">close</span>
+            <ion-icon aria-hidden="true" [icon]="closeIcon" />
           </button>
           @if (photoDataUrl()) {
             <img class="photo-viewer-img" [src]="photoDataUrl()!" alt="Profile photo" (click)="$event.stopPropagation()" />
@@ -193,356 +205,502 @@ import { NavigationHistoryService } from '../../../core/services/navigation-hist
   `,
   styles: [
     `
+      /* Personal Info — "Citrus & Ink" (tokens from src/theme/citrus.scss). */
       :host {
         display: block;
         min-height: 100%;
       }
 
-      .profile-content {
-        --background: #ecedf4;
+      ion-icon {
+        flex-shrink: 0;
+      }
+
+      .profile-content::part(background) {
+        background: var(--h-canvas);
       }
 
       .profile-page {
         min-height: 100%;
-        background: #ecedf4;
-        padding-bottom: calc(env(safe-area-inset-bottom, 0) + 8.5rem);
       }
 
+      /* Header */
       .profile-header {
         position: sticky;
         top: 0;
         z-index: 20;
         display: grid;
-        grid-template-columns: 3rem minmax(0, 1fr) 3rem;
+        grid-template-columns: 44px minmax(0, 1fr) 44px;
         align-items: center;
-        gap: 0.75rem;
-        padding: calc(env(safe-area-inset-top, 0) + 1rem) 1.5rem 1rem;
-        background: #f8f9ff;
-        border-bottom: 1px solid #c5d5cc;
+        gap: 12px;
+        padding: calc(env(safe-area-inset-top, 0px) + 12px) var(--h-gutter) 12px;
+        padding-inline: max(var(--h-gutter), calc((100% - 40rem) / 2 + var(--h-gutter)));
+        background: color-mix(in srgb, var(--h-canvas) 88%, transparent);
+        backdrop-filter: blur(18px);
       }
 
       .profile-header__action {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        width: 3rem;
-        height: 3rem;
-        border: none;
-        border-radius: 999px;
-        background: transparent;
-        color: #1f513c;
+        width: 44px;
+        height: 44px;
+        padding: 0;
+        border: 1px solid var(--h-line);
+        border-radius: 50%;
+        background: var(--h-surface);
+        color: var(--h-ink);
+        display: grid;
+        place-items: center;
+        font-size: 20px;
+      }
+
+      .profile-header__text {
+        text-align: center;
       }
 
       .profile-header__title {
         margin: 0;
-        font-family: 'Plus Jakarta Sans', 'Manrope', sans-serif;
-        font-size: clamp(1.55rem, 5.4vw, 2rem);
+        font-size: 1.3rem;
         font-weight: 800;
-        line-height: 1.15;
-        letter-spacing: -0.01em;
-        color: #0a8f5b;
+        letter-spacing: -0.03em;
+        color: var(--h-ink);
+      }
+
+      .profile-header__text p {
+        margin: 2px 0 0;
+        font-size: 0.76rem;
+        font-weight: 600;
+        color: var(--h-muted);
       }
 
       .profile-main {
-        display: grid;
-        gap: 1.5rem;
-        padding: 1.25rem 1rem 2rem;
+        width: min(100%, 40rem);
+        margin: 0 auto;
+        padding: 4px var(--h-gutter) 0;
       }
 
       .profile-form {
         display: grid;
-        gap: 1.25rem;
+        gap: 16px;
       }
 
+      /* Hero */
       .profile-hero {
-        display: grid;
-        justify-items: center;
-        gap: 0.4rem;
-        margin: 0.25rem 0 0.75rem;
+        position: relative;
+        isolation: isolate;
+        overflow: hidden;
+        display: flex;
+        align-items: center;
+        gap: 18px;
+        padding: 22px;
+        border-radius: 30px;
+        color: #ffffff;
+        background:
+          radial-gradient(70% 80% at 100% 100%, rgba(255, 106, 61, 0.5), transparent 70%),
+          radial-gradient(45% 55% at 0% 0%, rgba(201, 184, 255, 0.22), transparent 70%),
+          var(--h-hero-bg);
+        outline: 1px solid var(--h-hero-border);
+        outline-offset: -1px;
+        box-shadow: 0 24px 40px -24px rgba(22, 20, 29, 0.6);
+      }
+
+      .hero-dots {
+        position: absolute;
+        z-index: -1;
+        inset: 0 0 auto auto;
+        width: 55%;
+        height: 80%;
+        background-image: radial-gradient(rgba(255, 255, 255, 0.16) 1.2px, transparent 1.4px);
+        background-size: 14px 14px;
+        mask-image: linear-gradient(225deg, #000 10%, transparent 70%);
       }
 
       .profile-hero__avatar-wrap {
         position: relative;
-        padding: 0.42rem;
+        flex-shrink: 0;
+        padding: 4px;
         border-radius: 50%;
-        background: linear-gradient(145deg, #ffffff 10%, #edf3ff 54%, #f8efe9 100%);
-        box-shadow: 0 8px 20px rgba(15, 23, 42, 0.12);
+        background: conic-gradient(from 200deg, var(--h-sun), var(--h-accent), var(--h-lilac), var(--h-sun));
       }
 
       .profile-hero__avatar {
-        width: clamp(8.75rem, 34vw, 11rem);
+        width: clamp(92px, 28vw, 120px);
         aspect-ratio: 1;
         border-radius: 50%;
-        border: 4px solid #fbfdff;
-        background:
-          radial-gradient(circle at 45% 31%, #f1dfd3 10%, #cea486 26%, #2b3630 62%, transparent 65%),
-          linear-gradient(145deg, #345843, #1f382c);
+        border: 4px solid var(--h-hero-bg);
+        display: grid;
+        place-items: center;
+        background: var(--h-tile-1);
         background-size: cover;
         background-position: center;
       }
 
       .profile-hero__avatar--image {
-        border-color: #ffffff;
         cursor: pointer;
+      }
+
+      .profile-hero__placeholder {
+        font-size: 2.6rem;
       }
 
       .profile-hero__edit {
         position: absolute;
-        right: -0.2rem;
-        bottom: 0.3rem;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        width: 3.2rem;
-        height: 3.2rem;
-        border: none;
-        border-radius: 999px;
-        color: #fff;
-        background: #006c49;
-      }
-
-      .profile-hero__name {
-        margin: 0.95rem 0 0;
-        color: #08152b;
-        font-size: clamp(1.6rem, 6vw, 2rem);
-        font-weight: 700;
+        right: -2px;
+        bottom: 2px;
+        width: 40px;
+        height: 40px;
+        padding: 0;
+        border: 3px solid var(--h-hero-bg);
+        border-radius: 50%;
+        background: var(--h-accent);
+        color: #ffffff;
+        display: grid;
+        place-items: center;
+        font-size: 18px;
       }
 
       .profile-hero__file-input {
         display: none;
       }
 
+      .profile-hero__identity {
+        min-width: 0;
+      }
+
+      .profile-hero__eyebrow {
+        display: inline-block;
+        margin: 0 0 8px;
+        padding: 4px 10px;
+        border-radius: 9px;
+        background: var(--h-lilac);
+        color: #16141d;
+        font-size: 0.62rem;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        transform: rotate(-3deg);
+      }
+
+      .profile-hero__name {
+        margin: 0;
+        font-size: clamp(1.4rem, 6vw, 1.9rem);
+        font-weight: 800;
+        line-height: 1.1;
+        letter-spacing: -0.035em;
+        color: #ffffff;
+        overflow-wrap: anywhere;
+      }
+
+      .profile-hero__hint {
+        margin: 4px 0 0;
+        font-size: 0.8rem;
+        font-weight: 600;
+        color: rgba(255, 255, 255, 0.7);
+        overflow-wrap: anywhere;
+      }
+
+      /* Fields */
       .profile-fields {
         display: grid;
-        gap: 1rem;
+        gap: 16px;
+        padding: 18px;
+        border-radius: 26px;
+        border: 1px solid var(--h-line);
+        background: var(--h-surface);
+        box-shadow: var(--h-shadow);
       }
+
+      .profile-fields__head {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .profile-fields__icon {
+        width: 42px;
+        height: 42px;
+        flex-shrink: 0;
+        border-radius: 14px;
+        display: grid;
+        place-items: center;
+        background: var(--h-tile-3);
+        font-size: 1.2rem;
+        transform: rotate(-6deg);
+      }
+
+      .profile-fields__head h3 {
+        margin: 0;
+        font-size: 1.05rem;
+        font-weight: 800;
+        letter-spacing: -0.02em;
+        color: var(--h-ink);
+      }
+
+      .profile-fields__head p {
+        margin: 2px 0 0;
+        font-size: 0.78rem;
+        color: var(--h-muted);
+      }
+
+      .profile-fields__row {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+      }
+
+      .profile-card {
+        min-width: 0;
+        display: grid;
+        gap: 8px;
+      }
+
+      .profile-card__label {
+        font-size: 0.78rem;
+        font-weight: 700;
+        color: var(--h-ink-soft);
+      }
+
+      .profile-card__input-wrap {
+        position: relative;
+        display: flex;
+        align-items: center;
+        min-height: 54px;
+        border: 1px solid var(--h-line);
+        border-radius: 18px;
+        background: var(--h-canvas);
+      }
+
+      .profile-card__input-wrap:focus-within {
+        border-color: var(--h-accent);
+        box-shadow: 0 0 0 4px var(--h-accent-glow);
+      }
+
+      .profile-card__icon {
+        position: absolute;
+        left: 8px;
+        width: 36px;
+        height: 36px;
+        border-radius: 12px;
+        display: grid;
+        place-items: center;
+        background: var(--h-surface);
+        color: var(--h-ink-soft);
+        font-size: 17px;
+        pointer-events: none;
+      }
+
+      .profile-card__input {
+        width: 100%;
+        min-width: 0;
+        height: 52px;
+        padding: 0 14px 0 54px;
+        border: none;
+        border-radius: inherit;
+        background: transparent;
+        color: var(--h-ink);
+        font-size: 0.95rem;
+        font-weight: 700;
+        appearance: none;
+      }
+
+      .profile-card__input::placeholder {
+        color: var(--h-muted);
+        font-weight: 500;
+      }
+
+      .profile-card__select {
+        padding-right: 36px;
+      }
+
+      .profile-card__chevron {
+        position: absolute;
+        right: 12px;
+        color: var(--h-muted);
+        font-size: 16px;
+        pointer-events: none;
+      }
+
+      /* The wrapper draws the ring; beat the global input:not(…):focus rule (0,5,1). */
+      :host .profile-card .profile-card__input-wrap .profile-card__input:focus {
+        outline: none;
+        box-shadow: none;
+      }
+
+      .profile-card__input::-webkit-outer-spin-button,
+      .profile-card__input::-webkit-inner-spin-button {
+        margin: 0;
+        -webkit-appearance: none;
+      }
+
+      .profile-card__error {
+        margin: 0;
+        font-size: 0.78rem;
+        font-weight: 700;
+        color: var(--h-danger);
+      }
+
+      /* Sticky save */
+      .profile-save-bar {
+        position: sticky;
+        bottom: 0;
+        z-index: 10;
+        margin: 0 calc(var(--h-gutter) * -1);
+        padding: 12px var(--h-gutter) calc(12px + env(safe-area-inset-bottom, 0px));
+        background: color-mix(in srgb, var(--h-canvas) 88%, transparent);
+        backdrop-filter: blur(18px);
+        border-top: 1px solid var(--h-line);
+      }
+
+      .profile-save-button {
+        width: 100%;
+        min-height: 54px;
+        border: none;
+        border-radius: 999px;
+        background: var(--h-accent);
+        color: #ffffff;
+        font-size: 0.98rem;
+        font-weight: 800;
+        box-shadow: 0 12px 24px -12px var(--h-accent-glow);
+        transition: transform 140ms ease, opacity 160ms ease;
+      }
+
+      .profile-save-button:active:not(:disabled) {
+        transform: scale(0.98);
+      }
+
+      .profile-save-button:disabled {
+        opacity: 0.45;
+        box-shadow: none;
+      }
+
+      /* Crop modal */
       .crop-overlay {
         position: fixed;
         inset: 0;
-        z-index: 200;
+        z-index: 60;
         display: grid;
-        align-items: end;
-        padding: 0.75rem;
-        background: rgba(7, 22, 25, 0.52);
-        backdrop-filter: blur(2px);
+        place-items: center;
+        padding: 20px;
+        background: rgba(22, 20, 29, 0.6);
+        backdrop-filter: blur(6px);
       }
+
       .crop-modal {
-        width: min(100%, 32rem);
-        margin-inline: auto;
-        padding: calc(env(safe-area-inset-top, 0) + 1rem) 1rem calc(env(safe-area-inset-bottom, 0) + 1rem);
+        width: min(100%, 380px);
         display: grid;
-        gap: 0.9rem;
-        border-radius: 1.25rem;
-        border: 1px solid #d9e4dd;
-        background: #f9fcfa;
-        box-shadow: 0 18px 38px rgba(8, 21, 43, 0.26);
+        gap: 14px;
+        padding: 20px;
+        border-radius: 28px;
+        background: var(--h-surface);
+        color: var(--h-ink);
+        box-shadow: 0 30px 60px -20px rgba(0, 0, 0, 0.5);
       }
 
       .crop-modal h3 {
         margin: 0;
-        color: #08152b;
-      }
-
-      .photo-viewer-overlay {
-        position: fixed;
-        inset: 0;
-        z-index: 250;
-        display: grid;
-        place-items: center;
-        background: rgba(7, 22, 25, 0.86);
-      }
-
-      .photo-viewer-img {
-        width: min(90vw, 26rem);
-        aspect-ratio: 1;
-        border-radius: 50%;
-        object-fit: cover;
-        box-shadow: 0 18px 38px rgba(8, 21, 43, 0.4);
-      }
-
-      .photo-viewer-close {
-        position: absolute;
-        top: calc(env(safe-area-inset-top, 0) + 1rem);
-        right: 1rem;
-        width: 2.6rem;
-        height: 2.6rem;
-        border-radius: 50%;
-        border: none;
-        display: grid;
-        place-items: center;
-        background: rgba(255, 255, 255, 0.16);
-        color: #ffffff;
+        font-size: 1.15rem;
+        font-weight: 800;
+        letter-spacing: -0.02em;
       }
 
       .crop-preview {
-        width: min(82vw, 320px);
-        aspect-ratio: 1;
-        border-radius: 1rem;
-        overflow: hidden;
-        margin-inline: auto;
-        border: 1px solid #d8e1dd;
-        background:
-          linear-gradient(45deg, #f2f7f4 25%, transparent 25%) 0 0 / 18px 18px,
-          linear-gradient(-45deg, #f2f7f4 25%, transparent 25%) 0 0 / 18px 18px,
-          linear-gradient(45deg, transparent 75%, #f2f7f4 75%) 0 0 / 18px 18px,
-          linear-gradient(-45deg, transparent 75%, #f2f7f4 75%) 0 0 / 18px 18px,
-          #e8efeb;
         position: relative;
+        width: 100%;
+        aspect-ratio: 1;
+        border-radius: 50%;
+        overflow: hidden;
+        background: var(--h-canvas);
+        outline: 3px solid var(--h-accent);
+        outline-offset: 3px;
       }
 
       .crop-preview img {
         position: absolute;
-        left: 50%;
         top: 50%;
-        width: 100%;
-        height: 100%;
+        left: 50%;
+        min-width: 100%;
+        min-height: 100%;
         object-fit: cover;
       }
 
       .crop-control {
         display: grid;
-        gap: 0.4rem;
-        color: #1f513c;
-        font-size: 0.9rem;
-        font-weight: 600;
+        gap: 6px;
+        font-size: 0.78rem;
+        font-weight: 700;
+        color: var(--h-ink-soft);
+      }
+
+      .crop-control input {
+        width: 100%;
+        accent-color: var(--h-accent);
       }
 
       .crop-actions {
         display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 0.7rem;
+        grid-template-columns: 1fr 1.4fr;
+        gap: 10px;
       }
 
       .crop-btn {
-        min-height: 2.8rem;
+        min-height: 50px;
         border-radius: 999px;
-        border: 1px solid #c7d5ce;
-        font-weight: 700;
+        font-size: 0.92rem;
+        font-weight: 800;
       }
 
       .crop-btn--ghost {
-        background: #fff;
-        color: #1b3f30;
+        border: 1px solid var(--h-line);
+        background: var(--h-surface);
+        color: var(--h-ink);
       }
 
       .crop-btn--primary {
-        background: #0b7a4f;
-        border-color: #0b7a4f;
-        color: #fff;
-      }
-
-      .profile-card {
-        display: grid;
-        gap: 0.7rem;
-        padding: 0.95rem 1rem 0.8rem;
-        border-radius: 1.25rem;
-        border: 1px solid #a8beb1;
-        background: #f7f9f8;
-      }
-
-      .profile-card__label {
-        color: #0b7651;
-        font-family: Inter, sans-serif;
-        font-size: 0.82rem;
-        font-weight: 600;
-        letter-spacing: 0.01em;
-        text-transform: none;
-      }
-
-      .profile-card__input-wrap {
-        position: relative;
-        display: block;
-      }
-
-      .profile-card__input {
-        width: 100%;
         border: none;
-        background: transparent;
-        color: #07162f;
-        font-family: Inter, sans-serif;
-        font-size: 1.35rem;
-        font-weight: 500;
-        line-height: 1.2;
-        padding: 0 2.8rem 0.1rem 0;
+        background: var(--h-accent);
+        color: #ffffff;
       }
 
-      .profile-card__input:focus,
-      .profile-card__input:focus-visible,
-      .profile-card__select:focus,
-      .profile-card__select:focus-visible {
-        outline: none !important;
-        box-shadow: none !important;
+      /* Photo viewer */
+      .photo-viewer-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 60;
+        display: grid;
+        place-items: center;
+        padding: 24px;
+        background: rgba(22, 20, 29, 0.88);
+        backdrop-filter: blur(6px);
       }
 
-      .profile-card__input::-webkit-outer-spin-button,
-      .profile-card__input::-webkit-inner-spin-button {
-        -webkit-appearance: none;
-        margin: 0;
+      .photo-viewer-img {
+        width: min(100%, 420px);
+        aspect-ratio: 1;
+        object-fit: cover;
+        border-radius: 32px;
+        box-shadow: 0 30px 60px -20px rgba(0, 0, 0, 0.7);
       }
 
-      .profile-card__input[type='number'] {
-        -moz-appearance: textfield;
-      }
-
-      .profile-card__icon {
+      .photo-viewer-close {
         position: absolute;
-        right: 0.3rem;
-        bottom: 0.1rem;
-        color: #aec0b4;
-        font-size: 1.65rem;
+        top: calc(env(safe-area-inset-top, 0px) + 16px);
+        right: 16px;
+        width: 44px;
+        height: 44px;
+        border: none;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.14);
+        color: #ffffff;
+        display: grid;
+        place-items: center;
+        font-size: 22px;
       }
 
-      .profile-card__input-wrap--select .profile-card__icon--arrow {
-        right: 2rem;
-        color: #6a7281;
-      }
-
-      .profile-card__select {
-        appearance: none;
-        padding-right: 5rem;
-      }
-
-      .profile-card__error {
-        margin: 0;
-        color: #ba1a1a;
-        font-size: 0.8rem;
-        font-weight: 600;
-      }
-
-      .profile-header__action:disabled,
-      .profile-save-button:disabled {
-        opacity: 0.56;
-      }
-
-      .profile-save-button {
-        margin-top: 0.5rem;
-        width: 100%;
-        min-height: 3.5rem;
-        border-radius: 999px;
-        font-size: 1rem;
-        font-weight: 700;
-      }
-
-      @media (max-width: 480px) {
-        .profile-header {
-          padding-inline: 1rem;
-        }
-
-        .profile-main {
-          padding-inline: 0.75rem;
-        }
-
-        .profile-card {
-          padding-inline: 0.9rem;
-        }
-
-        .profile-card__input {
-          font-size: 1.2rem;
+      @media (max-width: 374px) {
+        .profile-fields__row {
+          grid-template-columns: 1fr;
         }
       }
-    `
+    `,
   ],
-  changeDetection: ChangeDetectionStrategy.OnPush
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ProfileDetailsPage {
   @ViewChild('avatarPicker')
@@ -554,6 +712,15 @@ export class ProfileDetailsPage {
   private readonly settingsService = inject(SettingsService);
   private readonly profile = this.settingsService.settings().profile;
 
+  protected readonly backIcon = arrowBackOutline;
+  protected readonly bellIcon = notificationsOutline;
+  protected readonly cameraIcon = cameraOutline;
+  protected readonly personIcon = personOutline;
+  protected readonly calendarIcon = calendarOutline;
+  protected readonly mailIcon = mailOutline;
+  protected readonly peopleIcon = peopleOutline;
+  protected readonly chevronIcon = chevronDownOutline;
+  protected readonly closeIcon = closeOutline;
   protected readonly isSaving = signal(false);
   protected readonly submitted = signal(false);
   protected readonly photoDataUrl = signal<string | null>(this.profile.photoDataUrl ?? null);

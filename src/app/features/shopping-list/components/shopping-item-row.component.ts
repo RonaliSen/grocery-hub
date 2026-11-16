@@ -1,119 +1,153 @@
 import { ChangeDetectionStrategy, Component, inject, input, output } from '@angular/core';
 
+import { FallbackImageDirective } from '../../../shared/directives/fallback-image.directive';
+import { PantryCategory } from '../../pantry/models/pantry-item.model';
+import { PantryImagePipe } from '../../pantry/pipes/pantry-image.pipe';
 import { PantryStateService } from '../../pantry/services/pantry-state.service';
+import { categoryTileColor } from '../../pantry/utils/pantry-category-style.util';
 import { ShoppingListItem } from '../models/shopping-list-item.model';
 
 @Component({
   selector: 'app-shopping-item-row',
   standalone: true,
+  imports: [FallbackImageDirective, PantryImagePipe],
   template: `
-    <article class="item-row" [class.completed]="item().completed">
+    <article
+      class="item-row"
+      [class.completed]="item().completed"
+      [style.--tile]="tileColor()"
+    >
       <button
         type="button"
         class="completion-chip"
         (click)="toggle.emit(item().id)"
         [attr.aria-label]="item().completed ? 'Mark as not completed' : 'Mark as completed'"
+        [attr.aria-pressed]="item().completed"
       >
-        <span class="material-symbols-outlined">{{ item().completed ? 'check_circle' : 'radio_button_unchecked' }}</span>
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>
       </button>
 
       <div class="item-visual">
-        <img [src]="itemImageUrl()" [alt]="item().name" class="item-image" loading="lazy" />
+        <img
+          [src]="itemImageUrl()"
+          [appFallbackImage]="{ name: item().name, category: category() } | pantryImage: 'fallback'"
+          [alt]="item().name"
+          class="item-image"
+          loading="lazy"
+        />
       </div>
 
       <div class="item-info">
         <p class="item-name">{{ item().name }}</p>
-        <p class="item-meta">{{ quantityLabel() }}</p>
+        <p class="item-meta">
+          {{ quantityLabel() }}
+          @if (sourceLabel(); as source) {
+            <span class="source-chip" [class.is-expiry]="item().source === 'expiry'">{{ source }}</span>
+          }
+        </p>
       </div>
 
-      <div class="actions-column">
-        <div class="quantity-stepper" aria-label="Quantity controls">
-          <button type="button" class="stepper-btn" (click)="decrement.emit(item().id)" aria-label="Decrease quantity">
-            <span class="material-symbols-outlined">remove</span>
-          </button>
-          <span class="stepper-value">{{ item().quantity }}</span>
-          <button type="button" class="stepper-btn" (click)="increment.emit(item().id)" aria-label="Increase quantity">
-            <span class="material-symbols-outlined">add</span>
-          </button>
-        </div>
-
-        <button type="button" class="delete-button" (click)="remove.emit(item().id)" aria-label="Delete item">
-          <span class="material-symbols-outlined">delete</span>
+      <div class="quantity-stepper" role="group" aria-label="Quantity controls">
+        <button type="button" class="stepper-btn" (click)="decrement.emit(item().id)" aria-label="Decrease quantity">
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 12h12" /></svg>
+        </button>
+        <span class="stepper-value">{{ item().quantity }}</span>
+        <button type="button" class="stepper-btn stepper-btn--add" (click)="increment.emit(item().id)" aria-label="Increase quantity">
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 6v12M6 12h12" /></svg>
         </button>
       </div>
+
+      <button type="button" class="delete-button" (click)="remove.emit(item().id)" aria-label="Delete item">
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M10 11v6M14 11v6M6.5 7l.8 11.2A2 2 0 0 0 9.3 20h5.4a2 2 0 0 0 2-1.8L17.5 7M9.5 7V5.5A1.5 1.5 0 0 1 11 4h2a1.5 1.5 0 0 1 1.5 1.5V7" /></svg>
+      </button>
     </article>
   `,
   styles: [
     `
-      .item-row {
-        --cart-green: #10b981;
-        --cart-green-deep: #006c49;
-        --cart-border: #dde3e8;
-        --cart-surface: #ffffff;
-        --cart-text-main: #0c1b2d;
-        --cart-text-muted: #3f4b43;
-
-        display: grid;
-        grid-template-columns: auto 84px minmax(0, 1fr) auto;
-        gap: 0.75rem;
-        align-items: center;
-        padding: 1rem;
-        border-radius: 1rem;
-        background: var(--cart-surface);
-        border: 1px solid var(--cart-border);
+      /* Tokens (--h-*) are inherited from the Cart page's .theme-citrus host. */
+      :host {
+        display: block;
       }
 
-      .item-row.completed {
-        opacity: 0.82;
+      /* Inline stroke icons (no icon-font or Ionic dependency). */
+      .icon {
+        width: 1em;
+        height: 1em;
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 2.2;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
 
-        .item-name {
-          text-decoration: line-through;
-        }
+      .item-row {
+        display: grid;
+        grid-template-columns: 40px 64px minmax(0, 1fr) auto;
+        grid-template-areas:
+          'check visual info    delete'
+          'check visual stepper stepper';
+        align-items: center;
+        column-gap: 12px;
+        row-gap: 8px;
+        padding: 10px 10px 10px 8px;
+        border-radius: 24px;
+        border: 1px solid var(--h-line);
+        background: var(--h-surface);
+        box-shadow: var(--h-shadow);
+        transition: opacity 200ms ease, background-color 200ms ease;
       }
 
       .completion-chip {
-        border: none;
-        background: transparent;
-        color: #8da09a;
+        grid-area: check;
+        width: 40px;
+        height: 40px;
         padding: 0;
-        width: 1.5rem;
-        height: 1.5rem;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
+        border: 2px solid color-mix(in srgb, var(--h-muted) 55%, transparent);
+        border-radius: 50%;
+        background: transparent;
+        color: transparent;
+        display: grid;
+        place-items: center;
+        font-size: 20px;
+        transition: background-color 180ms ease, border-color 180ms ease, transform 140ms ease;
       }
 
-      .completion-chip .material-symbols-outlined {
-        font-size: 1.15rem;
+      .completion-chip:active {
+        transform: scale(0.88);
       }
 
       .item-visual {
-        width: 84px;
-        height: 84px;
-        border-radius: 0.75rem;
+        grid-area: visual;
+        width: 64px;
+        height: 64px;
+        border-radius: 18px;
         overflow: hidden;
-        background: #f3f6f9;
+        background: var(--tile);
       }
 
       .item-image {
         width: 100%;
         height: 100%;
         object-fit: cover;
+        color: transparent;
+        transition: filter 200ms ease;
       }
 
       .item-info {
-        display: grid;
-        gap: 0.2rem;
+        grid-area: info;
         min-width: 0;
+        display: grid;
+        gap: 2px;
       }
 
       .item-name {
         margin: 0;
-        color: var(--cart-text-main);
+        font-family: var(--h-display);
         font-size: 1rem;
+        font-weight: 800;
         line-height: 1.2;
-        font-family: 'Plus Jakarta Sans', 'Manrope', sans-serif;
-        font-weight: 700;
+        letter-spacing: -0.02em;
+        color: var(--h-ink);
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -121,94 +155,123 @@ import { ShoppingListItem } from '../models/shopping-list-item.model';
 
       .item-meta {
         margin: 0;
-        color: var(--cart-text-muted);
-        font-size: 0.82rem;
-      }
-
-      .actions-column {
         display: flex;
         align-items: center;
-        gap: 0.5rem;
-        min-width: 0;
+        flex-wrap: wrap;
+        gap: 6px;
+        font-size: 0.8rem;
+        font-weight: 600;
+        color: var(--h-muted);
+      }
+
+      .source-chip {
+        padding: 2px 8px;
+        border-radius: 999px;
+        background: var(--h-warn-surface);
+        color: var(--h-warn);
+        font-size: 0.66rem;
+        font-weight: 800;
+      }
+
+      .source-chip.is-expiry {
+        background: var(--h-danger-surface);
+        color: var(--h-danger);
       }
 
       .quantity-stepper {
+        grid-area: stepper;
+        justify-self: start;
         display: inline-flex;
         align-items: center;
+        gap: 2px;
+        padding: 3px;
         border-radius: 999px;
-        background: var(--cart-green);
-        color: #063a2a;
-        padding: 0.2rem;
-        flex-shrink: 0;
+        background: var(--h-btn-bg);
       }
 
       .stepper-btn {
+        width: 32px;
+        height: 32px;
+        padding: 0;
         border: none;
-        background: transparent;
-        width: 2rem;
-        height: 2rem;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        color: #00422b;
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        font-size: 18px;
+        background: var(--h-remove-bg);
+        color: var(--h-btn-fg);
+        transition: transform 140ms ease;
       }
 
-      .stepper-btn .material-symbols-outlined {
-        font-size: 1.25rem;
+      .stepper-btn--add {
+        background: var(--h-accent);
+        color: #ffffff;
+      }
+
+      .stepper-btn:active {
+        transform: scale(0.86);
       }
 
       .stepper-value {
-        min-width: 1.4rem;
+        min-width: 30px;
         text-align: center;
-        color: #063a2a;
-        font-weight: 700;
-        font-size: 0.9rem;
+        font-family: var(--h-display);
+        font-size: 0.95rem;
+        font-weight: 800;
+        color: var(--h-btn-fg);
       }
 
       .delete-button {
-        flex-shrink: 0;
-        width: 1.8rem;
-        height: 1.8rem;
-        border: 1px solid color-mix(in srgb, var(--ion-color-danger) 24%, #ffffff);
-        border-radius: 999px;
-        background: color-mix(in srgb, var(--ion-color-danger) 9%, #ffffff);
-        color: var(--ion-color-danger);
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
+        grid-area: delete;
+        align-self: start;
+        width: 32px;
+        height: 32px;
+        padding: 0;
+        border: none;
+        border-radius: 50%;
+        background: var(--h-danger-surface);
+        color: var(--h-danger);
+        display: grid;
+        place-items: center;
+        font-size: 18px;
       }
 
-      .delete-button .material-symbols-outlined {
-        font-size: 1rem;
+      /* Checked off: filled tick, muted card */
+      .completed {
+        background: color-mix(in srgb, var(--h-surface) 55%, transparent);
+        box-shadow: none;
       }
 
-      @media (max-width: 420px) {
+      .completed .completion-chip {
+        border-color: var(--h-accent);
+        background: var(--h-accent);
+        color: #ffffff;
+      }
+
+      .completed .item-name {
+        color: var(--h-muted);
+        text-decoration: line-through;
+        text-decoration-thickness: 2px;
+      }
+
+      .completed .item-image {
+        filter: grayscale(0.8);
+        opacity: 0.7;
+      }
+
+      .completed .quantity-stepper {
+        opacity: 0.45;
+      }
+
+      @media (min-width: 560px) {
         .item-row {
-          grid-template-columns: auto 66px minmax(0, 1fr) auto;
-          gap: 0.5rem;
+          grid-template-columns: 40px 64px minmax(0, 1fr) auto auto;
+          grid-template-areas: 'check visual info stepper delete';
+          padding: 10px 12px 10px 10px;
         }
 
-        .item-visual {
-          width: 66px;
-          height: 66px;
-        }
-
-        .actions-column {
-          gap: 0.4rem;
-        }
-
-        .quantity-stepper {
-          padding: 0.12rem;
-        }
-
-        .stepper-btn {
-          width: 1.75rem;
-          height: 1.75rem;
-        }
-
-        .stepper-value {
-          min-width: 1.2rem;
-          font-size: 0.84rem;
+        .delete-button {
+          align-self: center;
         }
       }
     `,
@@ -249,6 +312,28 @@ export class ShoppingItemRowComponent {
   readonly remove = output<string>();
   readonly increment = output<string>();
   readonly decrement = output<string>();
+
+  /** Category of the linked pantry item, if any (drives tile colour and fallback art). */
+  protected category(): PantryCategory | null {
+    const linkedPantryItemId = this.item().linkedPantryItemId;
+    return linkedPantryItemId ? (this.pantryState.getById(linkedPantryItemId)?.category ?? null) : null;
+  }
+
+  protected tileColor(): string {
+    return categoryTileColor(this.category());
+  }
+
+  /** Why the item is on the list, for auto-added items. */
+  protected sourceLabel(): string | null {
+    switch (this.item().source) {
+      case 'low-stock':
+        return 'Running low';
+      case 'expiry':
+        return 'Expiring';
+      default:
+        return null;
+    }
+  }
 
   protected quantityLabel(): string {
     const item = this.item();

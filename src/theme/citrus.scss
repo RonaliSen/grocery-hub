@@ -1,0 +1,83 @@
+// "Citrus & Ink" design tokens.
+//
+// Opt-in theme used by the redesigned screens (Home, Pantry). Add the
+// `theme-citrus` class to a component host to use these tokens; the rest of
+// the app keeps the default green theme from `variables.scss`.
+
+.theme-citrus {
+  --h-canvas: #f6f1ea;
+  --h-surface: #ffffff;
+  --h-ink: #16141d;
+  --h-ink-soft: #4f4b5a;
+  --h-muted: #8a8595;
+  --h-line: rgba(22, 20, 29, 0.08);
+
+  --h-accent: #ff6a3d;
+  --h-accent-glow: rgba(255, 106, 61, 0.4);
+  --h-sun: #ffd15c;
+  --h-lilac: #c9b8ff;
+
+  --h-hero-bg: #16141d;
+  --h-hero-border: transparent;
+  --h-btn-bg: #16141d;
+  --h-btn-fg: #ffffff;
+  --h-remove-bg: rgba(255, 255, 255, 0.14);
+
+  // Pastel tiles, used in sequence (or mapped per category).
+  --h-tile-1: #ffe4d6; // peach
+  --h-tile-2: #ece5ff; // lilac
+  --h-tile-3: #fff0c7; // butter
+  --h-tile-4: #dcebff; // sky
+  --h-tile-5: #f1e7da; // sand
+  --h-tile-6: #ffe1e8; // blush
+
+  // Status colours (stock / expiry).
+  --h-ok: #2f9e6a;
+  --h-warn: #f08c00;
+  --h-danger: #e5484d;
+  --h-warn-surface: #fff1d6;
+  --h-danger-surface: #ffe3e3;
+
+  --h-shadow: 0 1px 2px rgba(22, 20, 29, 0.04), 0 10px 30px -12px rgba(22, 20, 29, 0.18);
+  --h-display: 'Plus Jakarta Sans', 'Manrope', sans-serif;
+  --h-stagger: 28px;
+  --h-gutter: var(--app-page-gutter);
+
+  color: var(--h-ink);
+}
+
+:root[data-theme='dark'] .theme-citrus {
+  --h-canvas: #121116;
+  --h-surface: #1d1b24;
+  --h-ink: #f4f0ea;
+  --h-ink-soft: #c9c4d2;
+  --h-muted: #9d98a8;
+  --h-line: rgba(255, 255, 255, 0.08);
+
+  --h-hero-bg: #211e2b;
+  --h-hero-border: var(--h-line);
+  --h-btn-bg: #f4f0ea;
+  --h-btn-fg: #16141d;
+  --h-remove-bg: rgba(22, 20, 29, 0.1);
+
+  --h-tile-1: #2b1f1a;
+  --h-tile-2: #221e33;
+  --h-tile-3: #29241a;
+  --h-tile-4: #18212e;
+  --h-tile-5: #25211c;
+  --h-tile-6: #2b1c22;
+
+  --h-ok: #4cc38a;
+  --h-warn: #ffb224;
+  --h-danger: #ff6369;
+  --h-warn-surface: rgba(255, 178, 36, 0.16);
+  --h-danger-surface: rgba(255, 99, 105, 0.16);
+
+  --h-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+
+@media (max-width: 560px) {
+  .theme-citrus {
+    --h-gutter: var(--app-page-gutter-tight);
+  }
+}

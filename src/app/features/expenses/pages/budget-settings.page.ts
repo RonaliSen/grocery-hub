@@ -17,124 +17,249 @@ import { ExpenseService } from '../services/expense.service';
 @Component({
   selector: 'app-budget-settings-page',
   standalone: true,
+  host: { class: 'theme-citrus' },
   imports: [FormsModule, IonContent, IonIcon],
   template: `
-    <header class="page-header app-mobile-header app-mobile-header--center">
-      <button class="icon-btn app-mobile-icon-btn plain" (click)="goBack()" aria-label="Back">
-        <ion-icon [icon]="backIcon" />
+    <header class="page-header">
+      <button class="icon-btn" (click)="goBack()" aria-label="Back">
+        <ion-icon aria-hidden="true" [icon]="backIcon" />
       </button>
-      <h1>Budget Settings</h1>
-      <div class="spacer app-mobile-icon-btn"></div>
+      <div class="header-text">
+        <h1>Budget Settings</h1>
+        <p>Plan your grocery spending</p>
+      </div>
+      <span class="icon-btn icon-btn--ghost" aria-hidden="true"></span>
     </header>
 
     <ion-content [fullscreen]="true" class="page-content">
-      <main class="shell app-mobile-shell">
-        <section class="intro-card app-mobile-card">
-          <div class="intro-icon"><ion-icon [icon]="walletIcon" /></div>
-          <div>
-            <p>Set your budget for groceries and track your spending. The budget resets automatically after each cycle.</p>
+      <main class="shell">
+        <!-- Live preview -->
+        <section class="intro-card" aria-label="Budget preview">
+          <div class="hero-dots" aria-hidden="true"></div>
+          <div class="intro-top">
+            <span class="intro-icon" aria-hidden="true"><ion-icon [icon]="walletIcon" /></span>
+            <p class="intro-eyebrow">{{ budgetType() === 'weekly' ? 'Weekly' : 'Monthly' }} budget</p>
           </div>
+          <p class="intro-amount">
+            <span>{{ currencySymbol() }}</span>{{ budgetAmount() || '0' }}
+            <small>/ {{ budgetType() === 'weekly' ? 'week' : 'month' }}</small>
+          </p>
+          @if (cyclePreview()) {
+            <div class="preview-card">
+              <p class="preview-title">Budget Cycle Preview</p>
+              <strong>{{ cyclePreview().replace(' -> ', ' → ') }}</strong>
+            </div>
+          }
+          <p class="intro-copy">
+            Set your budget for groceries and track your spending. The budget resets automatically after each cycle.
+          </p>
         </section>
 
-        <section class="card app-mobile-card">
-          <label>
-            <span>Budget Type</span>
-            <div class="select-wrap">
-              <select [ngModel]="budgetType()" (ngModelChange)="budgetType.set($event)">
-                <option value="weekly">Weekly</option>
-                <option value="monthly">Monthly</option>
-              </select>
-              <ion-icon [icon]="downIcon" />
+        <section class="card">
+          <div class="field">
+            <span class="field-label" id="budget-type-label">Budget Type</span>
+            <div class="segmented" role="radiogroup" aria-labelledby="budget-type-label">
+              <button
+                type="button"
+                role="radio"
+                [attr.aria-checked]="budgetType() === 'weekly'"
+                [class.is-active]="budgetType() === 'weekly'"
+                (click)="budgetType.set('weekly')"
+              >
+                <span aria-hidden="true">🗓️</span> Weekly
+              </button>
+              <button
+                type="button"
+                role="radio"
+                [attr.aria-checked]="budgetType() === 'monthly'"
+                [class.is-active]="budgetType() === 'monthly'"
+                (click)="budgetType.set('monthly')"
+              >
+                <span aria-hidden="true">📆</span> Monthly
+              </button>
             </div>
-          </label>
+          </div>
 
-          <label>
-            <span>Currency</span>
-            <div class="select-wrap">
-              <select [ngModel]="currency()" (ngModelChange)="currency.set($event)">
-                @for (option of currencyOptions; track option.code) {
-                  <option [value]="option.code">{{ option.label }} ({{ option.code }})</option>
-                }
-              </select>
-              <ion-icon [icon]="downIcon" />
-            </div>
-          </label>
-
-          <label class="budget-field budget-field--amount">
-            <span>Budget Amount</span>
-            <div class="amount-wrap">
+          <label class="field">
+            <span class="field-label">Budget Amount</span>
+            <span class="amount-wrap" [class.has-error]="amountError()">
               <strong>{{ currencySymbol() }}</strong>
-              <input type="number" min="0.01" step="0.01" [ngModel]="budgetAmount()" (ngModelChange)="budgetAmount.set($event)" />
-            </div>
+              <input
+                type="number"
+                min="0.01"
+                step="0.01"
+                inputmode="decimal"
+                placeholder="0.00"
+                [ngModel]="budgetAmount()"
+                (ngModelChange)="budgetAmount.set($event)"
+              />
+            </span>
           </label>
           @if (amountError()) {
             <p class="error">Budget amount is required and must be greater than 0.</p>
           }
 
-          <label class="budget-field budget-field--date">
-            <span>Start Date</span>
-            <div class="date-wrap">
-              <input type="date" [ngModel]="startDate()" (ngModelChange)="startDate.set($event)" />
-              <ion-icon [icon]="calendarIcon" />
-            </div>
-          </label>
+          <div class="field-row">
+            <label class="field">
+              <span class="field-label">Currency</span>
+              <span class="control-wrap">
+                <select [ngModel]="currency()" (ngModelChange)="currency.set($event)">
+                  @for (option of currencyOptions; track option.code) {
+                    <option [value]="option.code">{{ option.label }} ({{ option.code }})</option>
+                  }
+                </select>
+                <ion-icon aria-hidden="true" [icon]="downIcon" />
+              </span>
+            </label>
+
+            <label class="field">
+              <span class="field-label">Start Date</span>
+              <span class="control-wrap" [class.has-error]="dateError()">
+                <input type="date" [ngModel]="startDate()" (ngModelChange)="startDate.set($event)" />
+                <ion-icon aria-hidden="true" [icon]="calendarIcon" />
+              </span>
+            </label>
+          </div>
           @if (dateError()) {
             <p class="error">Start date is required.</p>
           }
         </section>
 
-        @if (cyclePreview()) {
-          <section class="preview-card app-mobile-card">
-            <p class="preview-title">Budget Cycle Preview</p>
-            <strong>{{ cyclePreview() }}</strong>
-          </section>
-        }
-
-        <div class="actions">
-          <button class="save" (click)="save()">Save Settings</button>
+        <div class="actions" [class.actions--single]="!hasExistingBudget()">
           @if (hasExistingBudget()) {
             <button class="ghost" (click)="reset()">Reset Budget</button>
           }
+          <button class="save" (click)="save()">Save Settings</button>
         </div>
       </main>
     </ion-content>
   `,
   styles: [`
-    :host { display:flex; flex-direction:column; height:100%; background:#f4f8f5; }
-    .page-header h1 { margin:0; text-align:center; font-size:clamp(1.3rem, 4.6vw, 1.7rem); color:#0f7d4d; font-weight:800; letter-spacing:-0.01em; }
-    .icon-btn { border:none; display:grid; place-items:center; }
-    .icon-btn.plain { background:transparent; color:#1f4e38; }
-    .page-content { --background:#f4f8f5; }
-    .shell { display:grid; gap:0.9rem; }
-    .intro-card { display:grid; grid-template-columns:auto 1fr; gap:0.75rem; align-items:start; }
-    .intro-card p { margin:0; color:#476356; }
-    .intro-icon { width:2.75rem; height:2.75rem; border-radius:1rem; background:#eaf6ef; color:#149255; display:grid; place-items:center; font-size:1.3rem; }
-    .card { display:grid; gap:0.85rem; }
-    label { display:grid; gap:0.35rem; color:#355a48; font-weight:600; font-size:0.9rem; }
-    label span { color:#244636; }
-    input, select, .amount-wrap, .date-wrap, .select-wrap { border:1px solid #d7e2db; border-radius:14px; min-height:3rem; background:#fff; }
-    input, select { width:100%; padding:0 0.85rem; color:#244636; }
-    .amount-wrap { display:grid; grid-template-columns:auto 1fr; align-items:center; padding:0 0.85rem; gap:0.55rem; }
-    .amount-wrap input { border:none; padding:0; }
-    .date-wrap, .select-wrap { display:grid; grid-template-columns:1fr auto; align-items:center; padding-right:0.85rem; }
-    .date-wrap input, .select-wrap select { border:none; background:transparent; }
-    .budget-field--amount .amount-wrap,
-    .budget-field--date .date-wrap { -webkit-tap-highlight-color: transparent; }
-    .budget-field--amount .amount-wrap:focus-within,
-    .budget-field--date .date-wrap:focus-within { border-color:#d7e2db; box-shadow:none; }
-    .budget-field--amount .amount-wrap input:focus,
-    .budget-field--date .date-wrap input:focus { border-color:transparent; box-shadow:none; outline:none; }
-    .date-wrap input[type="date"] { appearance:none; -webkit-appearance:none; -moz-appearance:none; }
-    .date-wrap input[type="date"]::-webkit-calendar-picker-indicator { opacity:0; width:0; margin:0; padding:0; }
-    .select-wrap select { appearance:none; -webkit-appearance:none; -moz-appearance:none; }
-    .preview-card { display:grid; gap:0.35rem; background:linear-gradient(180deg, #f7fbf8 0%, #eef8f1 100%); }
-    .preview-title { margin:0; color:#3f5b4d; font-size:0.82rem; text-transform:uppercase; letter-spacing:0.05em; }
-    .preview-card strong { color:#0f7d4d; font-size:1.1rem; }
-    .actions { display:grid; gap:0.6rem; }
-    .save,.ghost { border:none; border-radius:999px; min-height:3rem; font-weight:700; }
-    .save { background:#149255; color:#fff; }
-    .ghost { background:#eaf3ee; color:#244636; }
-    .error { margin:0; color:#c62828; font-size:0.84rem; }
+    /* Budget settings — "Citrus & Ink" (tokens from src/theme/citrus.scss). */
+    :host { display:flex; flex-direction:column; height:100%; background:var(--h-canvas); }
+    .page-content::part(background) { background:var(--h-canvas); }
+    ion-icon { flex-shrink:0; }
+
+    .page-header {
+      position:sticky; top:0; z-index:20;
+      display:grid; grid-template-columns:44px minmax(0, 1fr) 44px; align-items:center; gap:12px;
+      padding:calc(env(safe-area-inset-top, 0px) + 12px) var(--h-gutter) 12px;
+      background:color-mix(in srgb, var(--h-canvas) 88%, transparent); backdrop-filter:blur(18px);
+    }
+    .icon-btn {
+      width:44px; height:44px; border-radius:50%; border:1px solid var(--h-line);
+      background:var(--h-surface); color:var(--h-ink); display:grid; place-items:center; font-size:20px;
+    }
+    .icon-btn--ghost { visibility:hidden; }
+    .header-text { text-align:center; }
+    .header-text h1 { margin:0; font-size:1.3rem; font-weight:800; letter-spacing:-0.03em; color:var(--h-ink); }
+    .header-text p { margin:2px 0 0; font-size:0.76rem; font-weight:600; color:var(--h-muted); }
+
+    .shell {
+      width:min(100%, 40rem); margin:0 auto; padding:4px var(--h-gutter) 24px;
+      display:grid; grid-template-columns:minmax(0, 1fr); gap:16px;
+    }
+
+    /* Ink preview */
+    .intro-card {
+      position:relative; isolation:isolate; overflow:hidden;
+      display:grid; gap:12px; padding:20px 22px 22px; border-radius:30px; color:#fff;
+      background:
+        radial-gradient(70% 80% at 100% 100%, rgba(255, 106, 61, 0.5), transparent 70%),
+        radial-gradient(45% 55% at 0% 0%, rgba(201, 184, 255, 0.22), transparent 70%),
+        var(--h-hero-bg);
+      outline:1px solid var(--h-hero-border); outline-offset:-1px;
+      box-shadow:0 24px 40px -24px rgba(22, 20, 29, 0.6);
+    }
+    .hero-dots {
+      position:absolute; z-index:-1; inset:0 0 auto auto; width:55%; height:70%;
+      background-image:radial-gradient(rgba(255,255,255,0.16) 1.2px, transparent 1.4px); background-size:14px 14px;
+      mask-image:linear-gradient(225deg, #000 10%, transparent 70%);
+    }
+    .intro-top { display:flex; align-items:center; gap:10px; }
+    .intro-icon {
+      width:42px; height:42px; border-radius:14px; display:grid; place-items:center;
+      background:var(--h-sun); color:#16141d; font-size:20px; transform:rotate(-6deg);
+    }
+    .intro-eyebrow {
+      margin:0; padding:5px 11px; border-radius:10px; background:var(--h-lilac); color:#16141d;
+      font-size:0.66rem; font-weight:800; letter-spacing:0.08em; text-transform:uppercase; transform:rotate(-2deg);
+    }
+    .intro-amount {
+      margin:4px 0 0; font-family:var(--h-display); font-size:clamp(2.3rem, 11vw, 3rem); font-weight:800;
+      letter-spacing:-0.04em; line-height:1; color:var(--h-sun); overflow-wrap:anywhere;
+    }
+    .intro-amount span { margin-right:4px; font-size:0.6em; vertical-align:0.35em; }
+    .intro-amount small { font-size:0.36em; font-weight:700; letter-spacing:0; color:rgba(255,255,255,0.7); }
+    .preview-card {
+      display:grid; gap:2px; padding:12px 14px; border-radius:16px;
+      background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.12);
+    }
+    .preview-title { margin:0; font-size:0.66rem; font-weight:800; letter-spacing:0.08em; text-transform:uppercase; color:rgba(255,255,255,0.6); }
+    .preview-card strong { font-size:0.98rem; font-weight:800; }
+    .intro-copy { margin:0; font-size:0.8rem; line-height:1.45; color:rgba(255,255,255,0.7); }
+
+    /* Form card */
+    .card {
+      display:grid; gap:18px; padding:18px; border-radius:26px;
+      border:1px solid var(--h-line); background:var(--h-surface); box-shadow:var(--h-shadow);
+    }
+    .field { min-width:0; display:grid; gap:8px; }
+    .field-label { font-size:0.78rem; font-weight:700; color:var(--h-ink-soft); }
+    .field-row { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:12px; }
+
+    .segmented {
+      display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:4px; padding:4px;
+      border-radius:999px; background:var(--h-canvas); border:1px solid var(--h-line);
+    }
+    .segmented button {
+      min-height:44px; border:none; border-radius:999px; background:transparent;
+      color:var(--h-ink-soft); font-size:0.9rem; font-weight:800; transition:background-color 180ms ease, color 180ms ease;
+    }
+    .segmented button.is-active { background:var(--h-btn-bg); color:var(--h-btn-fg); box-shadow:0 6px 14px -8px rgba(22,20,29,0.6); }
+
+    .amount-wrap, .control-wrap {
+      position:relative; display:flex; align-items:center; min-width:0;
+      border:1px solid var(--h-line); border-radius:18px; background:var(--h-canvas);
+    }
+    .amount-wrap { gap:8px; min-height:68px; padding:0 18px; }
+    .amount-wrap strong { font-family:var(--h-display); font-size:1.5rem; font-weight:800; color:var(--h-accent); }
+    .amount-wrap input {
+      flex:1; min-width:0; border:none; background:transparent; padding:0;
+      font-family:var(--h-display); font-size:1.7rem; font-weight:800; letter-spacing:-0.03em; color:var(--h-ink);
+    }
+    .control-wrap { min-height:52px; }
+    .control-wrap select, .control-wrap input {
+      flex:1; width:100%; min-width:0; height:52px; border:none; background:transparent; padding:0 40px 0 14px;
+      color:var(--h-ink); font-size:0.9rem; font-weight:700; appearance:none;
+    }
+    .control-wrap ion-icon { position:absolute; right:14px; color:var(--h-muted); font-size:18px; pointer-events:none; }
+    .control-wrap input::-webkit-calendar-picker-indicator { position:absolute; right:0; width:44px; height:100%; opacity:0; cursor:pointer; }
+    .amount-wrap:focus-within, .control-wrap:focus-within { border-color:var(--h-accent); box-shadow:0 0 0 4px var(--h-accent-glow); }
+    .has-error { border-color:var(--h-danger); }
+    /* The wrapper draws the focus ring; beat the global input:not(…):focus rule (0,5,1). */
+    :host .card .field input:focus, :host .card .field select:focus { outline:none; box-shadow:none; }
+    input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { margin:0; -webkit-appearance:none; }
+    input[type='number'] { appearance:textfield; -moz-appearance:textfield; }
+    .error { margin:-8px 0 0; color:var(--h-danger); font-size:0.8rem; font-weight:700; }
+
+    /* Sticky actions */
+    .actions {
+      position:sticky; bottom:0; z-index:10;
+      margin:0 calc(var(--h-gutter) * -1); padding:12px var(--h-gutter) calc(12px + env(safe-area-inset-bottom, 0px));
+      display:grid; grid-template-columns:minmax(0, 1fr) minmax(0, 1.5fr); gap:10px;
+      background:color-mix(in srgb, var(--h-canvas) 88%, transparent); backdrop-filter:blur(18px);
+      border-top:1px solid var(--h-line);
+    }
+    .actions--single { grid-template-columns:1fr; }
+    .save, .ghost { min-height:54px; border-radius:999px; font-size:0.95rem; font-weight:800; transition:transform 140ms ease; }
+    .save:active, .ghost:active { transform:scale(0.97); }
+    .save { border:none; background:var(--h-accent); color:#fff; box-shadow:0 12px 24px -12px var(--h-accent-glow); }
+    .ghost { border:1px solid var(--h-line); background:var(--h-surface); color:var(--h-danger); }
+
+    @media (max-width: 359px) {
+      .field-row { grid-template-columns:1fr; }
+    }
   `],
   changeDetection: ChangeDetectionStrategy.OnPush
 })
