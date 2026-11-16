@@ -1,10 +1,11 @@
 import { ChangeDetectionStrategy, Component, inject, input, output } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { IonIcon } from '@ionic/angular/standalone';
-import { trashOutline } from 'ionicons/icons';
+import { addOutline, removeOutline, trashOutline } from 'ionicons/icons';
 
 import { FallbackImageDirective } from '../../../shared/directives/fallback-image.directive';
 import { CATEGORY_LABELS } from '../../../core/constants/app-config';
+import { formatQuantity } from '../../../core/utils/quantity.utils';
 import { ExpiryStatusPipe } from '../../../shared/pipes/expiry-status.pipe';
 import { QuantityLabelPipe } from '../../../shared/pipes/quantity-label.pipe';
 import { SettingsService } from '../../settings/services/settings.service';
@@ -45,7 +46,7 @@ import { getPantryStockStatus } from '../utils/pantry-stock-status.util';
 
       <div class="item-info">
         <h3 class="item-name">{{ item().name }}</h3>
-        <p class="quantity-line">{{ item().quantity | quantityLabel: item().unit }}</p>
+        <p class="quantity-line" aria-live="polite">{{ item().quantity | quantityLabel: item().unit }}</p>
 
         <div class="chips">
           <span class="stock-pill" [class]="'stock-pill stock--' + stockTone()">
@@ -58,6 +59,31 @@ import { getPantryStockStatus } from '../utils/pantry-stock-status.util';
           >
             {{ item().expiryDate ? (item().expiryDate | expiryStatus) : 'No expiry date' }}
           </p>
+        </div>
+
+        <!-- Clicks here must never reach the card's edit link (incl. taps on a disabled button). -->
+        <div class="item-actions" (click)="stopCardNavigation($event)">
+          <button
+            type="button"
+            class="action-button action-button--use"
+            data-testid="pantry-item-use"
+            [disabled]="item().quantity <= 0"
+            [attr.aria-label]="'Use ' + stepLabel() + ' of ' + item().name"
+            (click)="use.emit(item())"
+          >
+            <ion-icon aria-hidden="true" [icon]="useIcon" />
+            Use
+          </button>
+          <button
+            type="button"
+            class="action-button action-button--restock"
+            data-testid="pantry-item-restock"
+            [attr.aria-label]="'Restock ' + stepLabel() + ' of ' + item().name"
+            (click)="restock.emit(item())"
+          >
+            <ion-icon aria-hidden="true" [icon]="restockIcon" />
+            Restock
+          </button>
         </div>
       </div>
     </div>
@@ -224,6 +250,61 @@ import { getPantryStockStatus } from '../utils/pantry-stock-status.util';
         color: #9a5200;
       }
 
+      /* Use / Restock */
+      .item-actions {
+        margin-top: 10px;
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 6px;
+        cursor: default;
+      }
+
+      .action-button {
+        min-width: 0;
+        min-height: 40px;
+        padding: 0 8px;
+        border: none;
+        border-radius: 999px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 4px;
+        font-size: 0.75rem;
+        font-weight: 800;
+        white-space: nowrap;
+        transition: transform 160ms ease, opacity 160ms ease;
+      }
+
+      .action-button ion-icon {
+        font-size: 15px;
+      }
+
+      .action-button--use {
+        background: var(--h-surface);
+        color: var(--h-ink);
+      }
+
+      .action-button--restock {
+        background: var(--h-btn-bg);
+        color: var(--h-btn-fg);
+      }
+
+      .action-button:active:not(:disabled) {
+        transform: scale(0.94);
+      }
+
+      .action-button:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+      }
+
+      /* Very narrow cards: drop the icons so both labels fit. */
+      @media (max-width: 359px) {
+        .action-button ion-icon {
+          display: none;
+        }
+      }
+
       @media (hover: hover) {
         .item-card:hover {
           transform: translateY(-3px);
@@ -243,11 +324,27 @@ export class PantryItemCardComponent {
   readonly item = input.required<PantryItem>();
   readonly delete = output<string>();
   readonly addToShopping = output<PantryItem>();
+  /** Use one unit of the item. Disabled when nothing is left. */
+  readonly use = output<PantryItem>();
+  /** Restock one unit of the item. */
+  readonly restock = output<PantryItem>();
   protected readonly trashIcon = trashOutline;
+  protected readonly useIcon = removeOutline;
+  protected readonly restockIcon = addOutline;
   protected readonly categoryLabels = CATEGORY_LABELS;
 
   protected tileColor(): string {
     return categoryTileColor(this.item().category);
+  }
+
+  /** Each Use / Restock tap changes the quantity by one unit, e.g. "1 kg". */
+  protected stepLabel(): string {
+    return formatQuantity(1, this.item().unit);
+  }
+
+  protected stopCardNavigation(event: Event): void {
+    event.preventDefault();
+    event.stopPropagation();
   }
 
   protected onDelete(event: Event): void {

@@ -14,6 +14,13 @@ export class PantryConsumptionService {
   private readonly logsState = signal<readonly PantryConsumptionLog[]>([]);
   private readonly loadedState = signal(false);
   private loadPromise: Promise<void> | null = null;
+  /**
+   * Quantity changes run one at a time. Each change reads the current quantity
+   * and then waits for storage, so letting them overlap (e.g. a quick double tap
+   * on "Use") would base both on the same stale quantity and could record more
+   * consumption than was available.
+   */
+  private pendingChange: Promise<unknown> = Promise.resolve();
 
   readonly logs = computed(() => this.logsState());
   readonly loaded = computed(() => this.loadedState());
@@ -66,7 +73,53 @@ export class PantryConsumptionService {
     return this.applyConsumption(itemId, Math.abs(amount), actionType);
   }
 
-  private async applyConsumption(
+  /**
+   * Deletes a pantry item and records a `deleted` entry with its name and unit,
+   * so the item's history stays readable. Deleting is not consumption: it
+   * doesn't count towards any consumption totals.
+   */
+  removeItem(itemId: string): Promise<boolean> {
+    return this.enqueue(async () => {
+      await this.load();
+
+      const item = this.pantryState.getById(itemId);
+      if (!item) {
+        return false;
+      }
+
+      await this.pantryState.remove(itemId);
+      await this.appendLog({
+        id: createId('consumption'),
+        itemId,
+        actionType: 'deleted',
+        amount: item.quantity,
+        previousQuantity: item.quantity,
+        nextQuantity: 0,
+        createdAt: new Date().toISOString(),
+        itemName: item.name,
+        unit: item.unit
+      });
+
+      return true;
+    });
+  }
+
+  private applyConsumption(
+    itemId: string,
+    requestedAmount: number,
+    actionType: PantryConsumptionActionType
+  ): Promise<boolean> {
+    return this.enqueue(() => this.applyConsumptionNow(itemId, requestedAmount, actionType));
+  }
+
+  private enqueue<T>(change: () => Promise<T>): Promise<T> {
+    const result = this.pendingChange.then(change);
+    // A failed change must not block the ones queued after it.
+    this.pendingChange = result.catch(() => undefined);
+    return result;
+  }
+
+  private async applyConsumptionNow(
     itemId: string,
     requestedAmount: number,
     actionType: PantryConsumptionActionType
@@ -99,25 +152,27 @@ export class PantryConsumptionService {
     }
 
     await this.pantryState.setQuantity(itemId, nextQuantity);
+    await this.appendLog({
+      id: createId('consumption'),
+      itemId,
+      actionType,
+      amount,
+      previousQuantity,
+      nextQuantity,
+      createdAt: new Date().toISOString(),
+      itemName: item.name,
+      unit: item.unit
+    });
 
-    const nextLogs = this.sortLogs([
-      {
-        id: createId('consumption'),
-        itemId,
-        actionType,
-        amount,
-        previousQuantity,
-        nextQuantity,
-        createdAt: new Date().toISOString()
-      },
-      ...this.logsState()
-    ]);
+    return true;
+  }
+
+  private async appendLog(log: PantryConsumptionLog): Promise<void> {
+    const nextLogs = this.sortLogs([log, ...this.logsState()]);
 
     await this.repository.saveAll(nextLogs);
     this.logsState.set(nextLogs);
     this.loadedState.set(true);
-
-    return true;
   }
 
   private sortLogs(logs: readonly PantryConsumptionLog[]): readonly PantryConsumptionLog[] {

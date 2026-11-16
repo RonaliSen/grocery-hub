@@ -40,6 +40,7 @@ import { PantryCategory, QuantityUnit } from '../models/pantry-item.model';
 import { PantryImagePipe } from '../pipes/pantry-image.pipe';
 import { CATEGORY_EMOJI, categoryTileColor } from '../utils/pantry-category-style.util';
 import { getPantryStockStatus, PantryStockStatus } from '../utils/pantry-stock-status.util';
+import { PantryConsumptionService } from '../services/pantry-consumption.service';
 import { PantryDuplicateItemNameError, PantryStateService } from '../services/pantry-state.service';
 import { ShoppingListStateService } from '../../shopping-list/services/shopping-list-state.service';
 
@@ -1012,6 +1013,7 @@ export class PantryFormPage {
   private readonly formBuilder = inject(FormBuilder);
   private readonly route = inject(ActivatedRoute);
   private readonly pantryState = inject(PantryStateService);
+  private readonly consumption = inject(PantryConsumptionService);
   private readonly shoppingState = inject(ShoppingListStateService);
   private readonly settingsService = inject(SettingsService);
   private readonly navigationHistory = inject(NavigationHistoryService);
@@ -1301,7 +1303,8 @@ export class PantryFormPage {
     if (!id) return;
 
     if (confirm('Are you sure you want to delete this item?')) {
-      await this.pantryState.remove(id);
+      // Via the consumption service so Recent Activity records the deletion.
+      await this.consumption.removeItem(id);
       await this.navigationHistory.back('/tabs/pantry');
     }
   }

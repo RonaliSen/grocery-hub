@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, viewChild } from '@angular/core';
 import { AlertController, IonContent, IonIcon } from '@ionic/angular/standalone';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import {
@@ -17,10 +17,12 @@ import {
 import { isExpired, isExpiringWithin } from '../../../core/utils/date.utils';
 import { SettingsService } from '../../settings/services/settings.service';
 import { ShoppingListStateService } from '../../shopping-list/services/shopping-list-state.service';
+import { PantryConsumptionInsightsComponent } from '../components/pantry-consumption-insights.component';
 import { PantryItemCardComponent } from '../components/pantry-item-card.component';
 import { PantryFilterType } from '../models/pantry-filter.model';
 import { PantryItem } from '../models/pantry-item.model';
 import { PantryAuditSessionService } from '../services/pantry-audit-session.service';
+import { PantryConsumptionService } from '../services/pantry-consumption.service';
 import { PantryStateService } from '../services/pantry-state.service';
 import { CATEGORY_EMOJI } from '../utils/pantry-category-style.util';
 import { getPantryStockStatus, shouldShowPantryLowStock } from '../utils/pantry-stock-status.util';
@@ -40,7 +42,7 @@ const STATUS_FILTER_LABELS: Partial<Record<PantryFilterType, string>> = {
   selector: 'app-pantry-list-page',
   standalone: true,
   host: { class: 'theme-citrus' },
-  imports: [IonContent, IonIcon, PantryItemCardComponent, RouterLink],
+  imports: [IonContent, IonIcon, PantryConsumptionInsightsComponent, PantryItemCardComponent, RouterLink],
   template: `
     <header class="pantry-header">
       <div class="header-top">
@@ -145,6 +147,8 @@ const STATUS_FILTER_LABELS: Partial<Record<PantryFilterType, string>> = {
           </button>
         </section>
 
+        <app-pantry-consumption-insights />
+
         @if (pantryState.totalCount() === 0) {
           <section class="empty-card">
             <span class="empty-emoji" aria-hidden="true">🫙</span>
@@ -178,6 +182,8 @@ const STATUS_FILTER_LABELS: Partial<Record<PantryFilterType, string>> = {
                 [item]="item"
                 (delete)="confirmDelete($event)"
                 (addToShopping)="addToShoppingList($event)"
+                (use)="useItem($event)"
+                (restock)="restockItem($event)"
               />
             }
           </div>
@@ -193,6 +199,8 @@ const STATUS_FILTER_LABELS: Partial<Record<PantryFilterType, string>> = {
   `,
   styles: [
     `
+      @use '../styles/pantry-shared' as shared;
+
       /* Pantry — "Citrus & Ink". Tokens (--h-*) come from .theme-citrus
          (src/theme/citrus.scss), shared with the Home screen. */
       :host {
@@ -339,77 +347,10 @@ const STATUS_FILTER_LABELS: Partial<Record<PantryFilterType, string>> = {
         font-size: 22px;
       }
 
-      /* Filter pills: emoji + label + count */
-      .filter-nav {
-        display: flex;
-        gap: 8px;
-        margin: -4px calc(var(--h-gutter) * -1);
-        padding: 4px var(--h-gutter);
-        scroll-padding-inline: var(--h-gutter);
-        overflow-x: auto;
-        scroll-snap-type: x proximity;
-        scrollbar-width: none;
-      }
-
-      .filter-nav::-webkit-scrollbar {
-        display: none;
-      }
-
-      .filter-pill {
-        flex-shrink: 0;
-        scroll-snap-align: start;
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        min-height: 40px;
-        padding: 0 6px 0 10px;
-        border: 1px solid var(--h-line);
-        border-radius: 999px;
-        background: var(--h-surface);
-        color: var(--h-ink-soft);
-        font-size: 0.82rem;
-        font-weight: 700;
-        transition: background-color 160ms ease, color 160ms ease, transform 160ms ease;
-      }
-
-      .filter-pill::before {
-        content: attr(data-emoji);
-        content: attr(data-emoji) / '';
-        font-size: 1rem;
-      }
-
-      .filter-count {
-        min-width: 24px;
-        height: 24px;
-        padding: 0 7px;
-        border-radius: 999px;
-        display: grid;
-        place-items: center;
-        background: var(--h-canvas);
-        color: var(--h-ink-soft);
-        font-size: 0.72rem;
-        font-weight: 800;
-      }
-
-      .filter-pill.is-empty {
-        opacity: 0.55;
-      }
-
-      .filter-pill.is-active {
-        background: var(--h-btn-bg);
-        border-color: var(--h-btn-bg);
-        color: var(--h-btn-fg);
-        opacity: 1;
-      }
-
-      .filter-pill.is-active .filter-count {
-        background: var(--h-accent);
-        color: #ffffff;
-      }
-
-      .filter-pill:active {
-        transform: scale(0.96);
-      }
+      /* Filter pills (emoji + label + count) and section headings are shared
+         with the consumption insights: see styles/_pantry-shared.scss. */
+      @include shared.filter-pills;
+      @include shared.section-title-row;
 
       /* ---------------- Content ---------------- */
 
@@ -556,30 +497,6 @@ const STATUS_FILTER_LABELS: Partial<Record<PantryFilterType, string>> = {
         background: #ffffff;
         color: var(--h-accent);
         font-size: 18px;
-      }
-
-      /* Section heading */
-      .section-title-row {
-        display: flex;
-        align-items: baseline;
-        justify-content: space-between;
-        gap: 12px;
-        margin-bottom: -4px;
-      }
-
-      .section-title-row h3 {
-        margin: 0;
-        font-size: 1.4rem;
-        font-weight: 800;
-        letter-spacing: -0.03em;
-        color: var(--h-ink);
-      }
-
-      .section-title-row p {
-        margin: 0;
-        font-size: 0.8rem;
-        font-weight: 700;
-        color: var(--h-muted);
       }
 
       /* Staggered two-column grid, like Home */
@@ -751,6 +668,7 @@ export class PantryListPage {
   private readonly route = inject(ActivatedRoute);
   private readonly shoppingState = inject(ShoppingListStateService);
   private readonly settingsService = inject(SettingsService);
+  private readonly consumption = inject(PantryConsumptionService);
 
   protected readonly addIcon = addOutline;
   protected readonly pantryIcon = nutritionOutline;
@@ -802,6 +720,9 @@ export class PantryListPage {
     );
   });
 
+  /** Consumption insights (analytics, top items, usage trend, recent activity). */
+  private readonly insights = viewChild(PantryConsumptionInsightsComponent);
+
   constructor() {
     this.route.queryParamMap.subscribe((params) => {
       const requestedFilter = params.get('filter');
@@ -824,6 +745,11 @@ export class PantryListPage {
       if (filter === 'expired') return !!item.expiryDate && isExpired(item.expiryDate);
       return item.category === filter;
     }).length;
+  }
+
+  /** Ionic keeps tab pages alive; re-check the day when the Pantry tab is shown. */
+  ionViewWillEnter(): void {
+    this.insights()?.refreshToday();
   }
 
   protected onSearchInput(event: Event): void {
@@ -855,6 +781,19 @@ export class PantryListPage {
     await this.shoppingState.addFromPantryItem(item);
   }
 
+  /**
+   * Use / Restock go through the consumption service, which updates the pantry
+   * quantity and records a log entry. It never consumes more than is available
+   * and applies rapid taps one after another.
+   */
+  protected async useItem(item: PantryItem): Promise<void> {
+    await this.consumption.consume(item.id, 1);
+  }
+
+  protected async restockItem(item: PantryItem): Promise<void> {
+    await this.consumption.adjust(item.id, 1);
+  }
+
   protected async confirmDelete(itemId: string): Promise<void> {
     const alert = await this.alertController.create({
       cssClass: 'delete-pantry-alert',
@@ -878,7 +817,8 @@ export class PantryListPage {
     await alert.present();
   }
 
+  /** Deletes via the consumption service so Recent Activity records it. */
   private async removeItem(itemId: string): Promise<void> {
-    await this.pantryState.remove(itemId);
+    await this.consumption.removeItem(itemId);
   }
 }

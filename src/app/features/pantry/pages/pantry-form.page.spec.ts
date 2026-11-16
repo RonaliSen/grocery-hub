@@ -11,6 +11,7 @@ import { DEFAULT_APP_SETTINGS } from '../../../core/constants/app-config';
 import { NavigationHistoryService } from '../../../core/services/navigation-history.service';
 import { SettingsService } from '../../settings/services/settings.service';
 import { ShoppingListStateService } from '../../shopping-list/services/shopping-list-state.service';
+import { PantryConsumptionService } from '../services/pantry-consumption.service';
 import { PantryFormPage } from './pantry-form.page';
 import { PantryDuplicateItemNameError, PantryStateService } from '../services/pantry-state.service';
 
@@ -39,6 +40,9 @@ describe('PantryFormPage', () => {
   const shoppingState = {
     clearAutoAddDismissal: vi.fn()
   };
+  const consumption = {
+    removeItem: vi.fn()
+  };
 
   function configure(
     itemId: string | null = null,
@@ -51,6 +55,8 @@ describe('PantryFormPage', () => {
     pantryState.existsByName.mockReturnValue(false);
     pantryState.save.mockReset();
     shoppingState.clearAutoAddDismissal.mockReset();
+    consumption.removeItem.mockReset();
+    consumption.removeItem.mockResolvedValue(true);
     shoppingState.clearAutoAddDismissal.mockResolvedValue(undefined);
     router.navigateByUrl.mockReset();
     navigationHistory.back.mockReset();
@@ -75,6 +81,10 @@ describe('PantryFormPage', () => {
         {
           provide: ShoppingListStateService,
           useValue: shoppingState
+        },
+        {
+          provide: PantryConsumptionService,
+          useValue: consumption
         },
         {
           provide: SettingsService,
@@ -174,6 +184,46 @@ describe('PantryFormPage', () => {
       indianStore: false,
       notes: 'Top shelf'
     });
+  });
+
+  it('deletes through the consumption service so Recent Activity records it', async () => {
+    await configure('item-1');
+    pantryState.getById.mockReturnValue({
+      id: 'item-1',
+      name: 'Greek Yogurt',
+      category: 'dairy',
+      unit: 'count',
+      quantity: 2,
+      minQuantity: 1,
+      autoAddToShoppingList: true,
+      expiryDate: null,
+      germanStore: false,
+      indianStore: false,
+      notes: null,
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z'
+    });
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+
+    const fixture = TestBed.createComponent(PantryFormPage);
+    fixture.detectChanges();
+    await (fixture.componentInstance as any).delete();
+
+    expect(consumption.removeItem).toHaveBeenCalledWith('item-1');
+    expect(navigationHistory.back).toHaveBeenCalledWith('/tabs/pantry');
+    confirmSpy.mockRestore();
+  });
+
+  it('does not delete when the confirmation is cancelled', async () => {
+    await configure('item-1');
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
+
+    const fixture = TestBed.createComponent(PantryFormPage);
+    fixture.detectChanges();
+    await (fixture.componentInstance as any).delete();
+
+    expect(consumption.removeItem).not.toHaveBeenCalled();
+    confirmSpy.mockRestore();
   });
 
   it('applies popular-pick category mapping while editing older items', async () => {
