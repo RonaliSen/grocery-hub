@@ -8,5 +8,6 @@ export const STORAGE_KEYS = {
   appSettings: 'grocery.appSettings',
   reminderNotificationIds: 'grocery.reminderNotificationIds',
   expenseBudget: 'grocery.expenseBudget',
-  reminderStore: 'grocery.reminderStore'
+  reminderStore: 'grocery.reminderStore',
+  mealPlan: 'grocery.mealPlan'
 } as const;

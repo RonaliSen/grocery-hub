@@ -4,6 +4,7 @@ import { AppSettings } from '../../features/settings/models/app-settings.model';
 import { PantryItem } from '../../features/pantry/models/pantry-item.model';
 import { PantryStateService } from '../../features/pantry/services/pantry-state.service';
 import { ExpenseService } from '../../features/expenses/services/expense.service';
+import { MealPlanStateService } from '../../features/meal-planner/services/meal-plan-state.service';
 import { ReminderService } from '../../features/reminders/services/reminder.service';
 import { SettingsService } from '../../features/settings/services/settings.service';
 import { ShoppingListStateService } from '../../features/shopping-list/services/shopping-list-state.service';
@@ -19,6 +20,7 @@ export class AppInitService {
   private readonly settingsService = inject(SettingsService);
   private readonly expenseService = inject(ExpenseService);
   private readonly reminderService = inject(ReminderService);
+  private readonly mealPlanState = inject(MealPlanStateService);
   private readonly initializedState = signal(false);
   private initialized = false;
   private pendingRuntimeSync:
@@ -73,7 +75,8 @@ export class AppInitService {
       this.pantryState.load(),
       this.shoppingState.load(),
       this.expenseService.load(),
-      this.reminderService.load()
+      this.reminderService.load(),
+      this.mealPlanState.load()
     ]);
     await this.runRuntimeSync(this.pantryState.items(), this.settingsService.settings());
     this.initialized = true;

@@ -197,6 +197,16 @@ export class TabsShellPage {
       return '/tabs/settings';
     }
 
+    // A meal goes back to its day; a day goes back to the week.
+    const mealDay = /^\/tabs\/meal-planner\/([^/]+)\/meals\//.exec(path);
+    if (mealDay) {
+      return `/tabs/meal-planner/${mealDay[1]}`;
+    }
+
+    if (path.startsWith('/tabs/meal-planner/')) {
+      return '/tabs/meal-planner';
+    }
+
     return '/tabs/home';
   }
 }

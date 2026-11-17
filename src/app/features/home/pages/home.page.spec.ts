@@ -34,9 +34,13 @@ class DummyProfilePage {}
 @Component({ standalone: true, template: '' })
 class DummyExpiryTrackerPage {}
 
+@Component({ standalone: true, template: '' })
+class DummyMealPlannerPage {}
+
 const TEST_ROUTES: Routes = [
   { path: 'tabs/profile', component: DummyProfilePage },
   { path: 'tabs/expiry-tracker', component: DummyExpiryTrackerPage },
+  { path: 'tabs/meal-planner', component: DummyMealPlannerPage },
 ];
 
 function expiringInDays(days: number): string {
@@ -211,6 +215,19 @@ describe('HomePage', () => {
     await fixture.whenStable();
 
     expect(TestBed.inject(Router).url).toBe('/tabs/expiry-tracker');
+  });
+
+  it('opens the Meal Planner from the home shortcut', async () => {
+    const fixture = TestBed.createComponent(HomePage);
+    fixture.detectChanges();
+
+    const shortcut = fixture.nativeElement.querySelector('a.planner-shortcut') as HTMLAnchorElement;
+    expect(shortcut.querySelector('.planner-shortcut__title')?.textContent?.trim()).toBe('Meal Planner');
+
+    shortcut.click();
+    await fixture.whenStable();
+
+    expect(TestBed.inject(Router).url).toBe('/tabs/meal-planner');
   });
 
   it('renders the saved profile name in the greeting', () => {

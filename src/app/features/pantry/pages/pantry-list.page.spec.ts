@@ -21,10 +21,12 @@ import { PantryStateService } from '../services/pantry-state.service';
 import { formatActivityDateTime } from '../utils/pantry-activity.util';
 import { PantryListPage } from './pantry-list.page';
 
+/**
+ * Local `YYYY-MM-DD` `days` from today — the calendar day the app compares expiry dates
+ * against. (Not `toISOString()`: that's the UTC date, a day off near midnight in most timezones.)
+ */
 function dateOnlyFromOffset(days: number): string {
-  const value = new Date();
-  value.setDate(value.getDate() + days);
-  return value.toISOString().slice(0, 10);
+  return toLocalDateOnly(addDays(new Date(), days));
 }
 
 describe('PantryListPage', () => {

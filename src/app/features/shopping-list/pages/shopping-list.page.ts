@@ -24,7 +24,7 @@ import {
 
 import { CATEGORY_FILTER_OPTIONS, CATEGORY_LABELS } from '../../../core/constants/app-config';
 import { formatCurrencyAmount, getCurrencySymbol } from '../../../core/utils/currency.utils';
-import { isExpired } from '../../../core/utils/date.utils';
+import { isExpired, toLocalDateOnly } from '../../../core/utils/date.utils';
 import { PantryCategory } from '../../pantry/models/pantry-item.model';
 import { PantryStateService } from '../../pantry/services/pantry-state.service';
 import { CATEGORY_EMOJI } from '../../pantry/utils/pantry-category-style.util';
@@ -1479,7 +1479,7 @@ export class ShoppingListPage {
   }
 
   private buildPdfFileName(): string {
-    const compactDate = this.shareGeneratedAt().toISOString().slice(0, 10);
+    const compactDate = toLocalDateOnly(this.shareGeneratedAt());
     return `grocery-hub-shopping-list-${compactDate}.pdf`;
   }
 

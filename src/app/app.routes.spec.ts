@@ -78,4 +78,27 @@ describe('app routes', () => {
     expect(TestBed.inject(Router).url).toBe('/tabs/expiry-tracker');
     expect(harness.routeNativeElement?.querySelector('app-expiry-tracker-page')).not.toBeNull();
   });
+
+  it('serves the Meal Planner week at /tabs/meal-planner', async () => {
+    const harness = await RouterTestingHarness.create('/tabs/meal-planner');
+
+    expect(TestBed.inject(Router).url).toBe('/tabs/meal-planner');
+    expect(harness.routeNativeElement?.querySelector('app-meal-planner-page')).not.toBeNull();
+  });
+
+  it('serves a Meal Planner day at /tabs/meal-planner/:date', async () => {
+    const harness = await RouterTestingHarness.create('/tabs/meal-planner/2026-11-20');
+
+    expect(TestBed.inject(Router).url).toBe('/tabs/meal-planner/2026-11-20');
+    const dayPage = harness.routeNativeElement?.querySelector('app-meal-planner-day-page');
+    expect(dayPage).not.toBeNull();
+    expect(dayPage?.querySelectorAll('.slot-card')).toHaveLength(3);
+  });
+
+  it('serves a Meal Planner meal at /tabs/meal-planner/:date/meals/:mealId', async () => {
+    const harness = await RouterTestingHarness.create('/tabs/meal-planner/2026-11-20/meals/meal-1');
+
+    expect(TestBed.inject(Router).url).toBe('/tabs/meal-planner/2026-11-20/meals/meal-1');
+    expect(harness.routeNativeElement?.querySelector('app-meal-planner-meal-page')).not.toBeNull();
+  });
 });

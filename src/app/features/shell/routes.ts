@@ -34,6 +34,10 @@ export const SHELL_ROUTES: Routes = [
         loadChildren: () => import('../expiry-tracker/routes').then((m) => m.EXPIRY_TRACKER_ROUTES)
       },
       {
+        path: 'meal-planner',
+        loadChildren: () => import('../meal-planner/routes').then((m) => m.MEAL_PLANNER_ROUTES)
+      },
+      {
         path: '',
         pathMatch: 'full',
         redirectTo: 'home'

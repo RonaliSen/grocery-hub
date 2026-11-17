@@ -3,15 +3,18 @@ import { TestBed } from '@angular/core/testing';
 import { vi } from 'vitest';
 
 import { DEFAULT_APP_SETTINGS } from '../../../core/constants/app-config';
+import { addDays, toLocalDateOnly } from '../../../core/utils/date.utils';
 import { SettingsService } from '../../settings/services/settings.service';
 import { PantryItem } from '../models/pantry-item.model';
 import { PantryRepositoryService } from './pantry-repository.service';
 import { PantryDuplicateItemNameError, PantryStateService } from './pantry-state.service';
 
+/**
+ * Local `YYYY-MM-DD` `days` from today — the calendar day the app compares expiry dates
+ * against. (Not `toISOString()`: that's the UTC date, a day off near midnight in most timezones.)
+ */
 function dateOnlyFromOffset(days: number): string {
-  const value = new Date();
-  value.setDate(value.getDate() + days);
-  return value.toISOString().slice(0, 10);
+  return toLocalDateOnly(addDays(new Date(), days));
 }
 
 function createItem(overrides: Partial<PantryItem> = {}): PantryItem {

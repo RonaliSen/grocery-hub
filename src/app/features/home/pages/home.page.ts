@@ -9,6 +9,7 @@ import { PantryStateService } from '../../pantry/services/pantry-state.service';
 import { ExpiryAlertComponent } from '../../expiry-tracker/components/expiry-alert.component';
 import { ExpiryShortcutComponent } from '../../expiry-tracker/components/expiry-shortcut.component';
 import { summarizeExpiry, toExpiryEntry } from '../../expiry-tracker/utils/expiry-tracker.util';
+import { MealPlannerShortcutComponent } from '../../meal-planner/components/meal-planner-shortcut.component';
 import { SettingsService } from '../../settings/services/settings.service';
 import { ShoppingListStateService } from '../../shopping-list/services/shopping-list-state.service';
 
@@ -99,6 +100,7 @@ const POPULAR_PRODUCTS: readonly FeaturedProduct[] = [
     ExpiryShortcutComponent,
     FallbackImageDirective,
     IonContent,
+    MealPlannerShortcutComponent,
     PantryImagePipe,
     RouterLink,
   ],
@@ -166,7 +168,10 @@ const POPULAR_PRODUCTS: readonly FeaturedProduct[] = [
           </div>
         </section>
 
-        <app-expiry-shortcut [summary]="expirySummary()" />
+        <div class="shortcuts">
+          <app-expiry-shortcut [summary]="expirySummary()" />
+          <app-meal-planner-shortcut />
+        </div>
 
         <section class="categories-section">
           <nav class="category-pills" aria-label="Product categories">
@@ -621,6 +626,14 @@ const POPULAR_PRODUCTS: readonly FeaturedProduct[] = [
         text-transform: uppercase;
         transform: rotate(-12deg);
         box-shadow: 0 8px 18px -6px rgba(0, 0, 0, 0.45);
+      }
+
+      /* ---------------- Shortcuts ---------------- */
+
+      .shortcuts {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        gap: 10px;
       }
 
       /* ---------------- Categories ---------------- */

@@ -16,6 +16,7 @@ try {
 import { DEFAULT_APP_SETTINGS } from '../constants/app-config';
 import { PantryStateService } from '../../features/pantry/services/pantry-state.service';
 import { ExpenseService } from '../../features/expenses/services/expense.service';
+import { MealPlanStateService } from '../../features/meal-planner/services/meal-plan-state.service';
 import { ReminderService } from '../../features/reminders/services/reminder.service';
 import { SettingsService } from '../../features/settings/services/settings.service';
 import { ShoppingListStateService } from '../../features/shopping-list/services/shopping-list-state.service';
@@ -63,6 +64,11 @@ describe('AppInitService', () => {
     }),
     settings: settingsState
   };
+  const mealPlanState = {
+    load: vi.fn(async () => {
+      calls.push('meal-plan');
+    })
+  };
   const reminderService = {
     load: vi.fn(async () => {}),
     loaded: signal(false),
@@ -77,6 +83,7 @@ describe('AppInitService', () => {
     pantryState.load.mockClear();
     pantryItems.set(['pantry-items']);
     shoppingState.load.mockClear();
+    mealPlanState.load.mockClear();
     shoppingItems.set([]);
     shoppingState.syncAutoAddLowStockItems.mockClear();
     settingsService.load.mockClear();
@@ -113,6 +120,10 @@ describe('AppInitService', () => {
         {
           provide: ExpenseService,
           useValue: expenseService
+        },
+        {
+          provide: MealPlanStateService,
+          useValue: mealPlanState
         }
       ]
     });
@@ -133,6 +144,7 @@ describe('AppInitService', () => {
       'pantry',
       'shopping',
       'expense',
+      'meal-plan',
       'auto-add',
       'reminder'
     ]);

@@ -229,13 +229,16 @@ describe('ReminderService', () => {
     await service.sync();
 
     const reminder = service.getVisibleReminders('expiry')[0];
-    await service.snooze(reminder.id, '2026-03-15T12:00:00.000Z');
+    // Relative to "now" (local 08:00, set in beforeEach): a fixed UTC time such as 12:00Z is
+    // already due in timezones where local 08:00 is 12:00Z or later (e.g. New York in March).
+    const snoozeUntil = new Date(Date.now() + 4 * 60 * 60 * 1000);
+    await service.snooze(reminder.id, snoozeUntil.toISOString());
 
     expect(service.getVisibleReminders('expiry')).toHaveLength(0);
     expect(service.getSnoozedReminders('expiry')).toHaveLength(1);
     expect(service.getReminderCountForState('SNOOZED', 'all')).toBe(1);
 
-    vi.setSystemTime(new Date('2026-03-15T12:01:00.000Z'));
+    vi.setSystemTime(new Date(snoozeUntil.getTime() + 60 * 1000));
     await service.sync();
 
     expect(service.getVisibleReminders('expiry')).toHaveLength(1);

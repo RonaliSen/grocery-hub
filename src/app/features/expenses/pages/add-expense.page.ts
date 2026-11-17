@@ -13,6 +13,7 @@ import {
 import { CATEGORY_LABELS } from '../../../core/constants/app-config';
 import { NavigationHistoryService } from '../../../core/services/navigation-history.service';
 import { getCurrencySymbol } from '../../../core/utils/currency.utils';
+import { todayDateOnly } from '../../../core/utils/date.utils';
 import { CATEGORY_EMOJI, categoryTileColor } from '../../pantry/utils/pantry-category-style.util';
 import { EXPENSE_CATEGORIES, ExpenseCategory } from '../models/expense.model';
 import { ExpenseService } from '../services/expense.service';
@@ -336,7 +337,7 @@ export class AddExpensePage {
   protected discount = '0';
   protected category: ExpenseCategory = 'vegetables';
   protected store = '';
-  protected date = new Date().toISOString().slice(0, 10);
+  protected date = todayDateOnly();
   protected notes = '';
   protected receiptImageUrl = '';
   protected showError = false;

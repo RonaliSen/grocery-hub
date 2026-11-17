@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { todayDateOnly } from '../../../core/utils/date.utils';
 import {
   getPantryLowStockThreshold,
   getPantryStockStatus,
@@ -40,7 +41,7 @@ describe('pantry-stock-status.util', () => {
         quantity: 250,
         minQuantity: 300,
         unit: 'g',
-        expiryDate: new Date().toISOString().slice(0, 10)
+        expiryDate: todayDateOnly()
       })
     ).toBe('low-stock');
   });

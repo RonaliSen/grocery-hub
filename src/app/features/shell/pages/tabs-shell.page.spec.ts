@@ -80,6 +80,24 @@ const TEST_ROUTES: Routes = [
       {
         path: 'profile',
         component: DummyPage
+      },
+      {
+        path: 'meal-planner',
+        children: [
+          {
+            path: '',
+            pathMatch: 'full',
+            component: DummyPage
+          },
+          {
+            path: ':date',
+            component: DummyPage
+          },
+          {
+            path: ':date/meals/:mealId',
+            component: DummyPage
+          }
+        ]
       }
     ]
   }
@@ -330,6 +348,54 @@ describe('TabsShellPage', () => {
     expect(processNextHandler).not.toHaveBeenCalled();
     expect(navigationHistory.back).toHaveBeenCalledWith('/tabs/settings');
     expect(alertController.create).not.toHaveBeenCalled();
+  });
+
+  it('falls back to the weekly plan for a Meal Planner day without in-app history', async () => {
+    const fixture = TestBed.createComponent(TabsShellPage);
+    const router = TestBed.inject(Router);
+
+    fixture.detectChanges();
+
+    await router.navigateByUrl('/tabs/meal-planner/2026-11-20');
+    await fixture.whenStable();
+
+    const processNextHandler = vi.fn();
+    await backButtonHandler?.(processNextHandler);
+
+    expect(processNextHandler).not.toHaveBeenCalled();
+    expect(navigationHistory.back).toHaveBeenCalledWith('/tabs/meal-planner');
+    expect(selectedTabs(fixture)).toEqual([]);
+  });
+
+  it("falls back to the meal's day for a Meal Planner meal without in-app history", async () => {
+    const fixture = TestBed.createComponent(TabsShellPage);
+    const router = TestBed.inject(Router);
+
+    fixture.detectChanges();
+
+    await router.navigateByUrl('/tabs/meal-planner/2026-11-20/meals/meal-1');
+    await fixture.whenStable();
+
+    const processNextHandler = vi.fn();
+    await backButtonHandler?.(processNextHandler);
+
+    expect(processNextHandler).not.toHaveBeenCalled();
+    expect(navigationHistory.back).toHaveBeenCalledWith('/tabs/meal-planner/2026-11-20');
+  });
+
+  it('falls back to Home for the Meal Planner week without in-app history', async () => {
+    const fixture = TestBed.createComponent(TabsShellPage);
+    const router = TestBed.inject(Router);
+
+    fixture.detectChanges();
+
+    await router.navigateByUrl('/tabs/meal-planner');
+    await fixture.whenStable();
+
+    const processNextHandler = vi.fn();
+    await backButtonHandler?.(processNextHandler);
+
+    expect(navigationHistory.back).toHaveBeenCalledWith('/tabs/home');
   });
 });
 

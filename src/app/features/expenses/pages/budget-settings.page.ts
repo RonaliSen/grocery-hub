@@ -5,6 +5,7 @@ import { IonContent, IonIcon } from '@ionic/angular/standalone';
 import { arrowBackOutline, calendarOutline, chevronDownOutline, walletOutline } from 'ionicons/icons';
 
 import { NavigationHistoryService } from '../../../core/services/navigation-history.service';
+import { todayDateOnly } from '../../../core/utils/date.utils';
 import {
   CURRENCY_OPTIONS,
   CurrencyCode,
@@ -275,7 +276,7 @@ export class BudgetSettingsPage {
   protected readonly currencyOptions = CURRENCY_OPTIONS;
   protected readonly budgetType = signal<BudgetType>('monthly');
   protected readonly budgetAmount = signal('');
-  protected readonly startDate = signal(new Date().toISOString().slice(0, 10));
+  protected readonly startDate = signal(todayDateOnly());
   protected readonly currency = signal<CurrencyCode>(DEFAULT_CURRENCY_CODE);
   protected readonly amountError = signal(false);
   protected readonly dateError = signal(false);
@@ -340,7 +341,7 @@ export class BudgetSettingsPage {
   private applySettings(settings: BudgetSettings | null): void {
     this.budgetType.set(settings?.budgetType ?? 'monthly');
     this.budgetAmount.set(settings?.budgetAmount ? String(settings.budgetAmount) : '');
-    this.startDate.set(settings?.startDate ?? new Date().toISOString().slice(0, 10));
+    this.startDate.set(settings?.startDate ?? todayDateOnly());
     this.currency.set(settings?.currency ?? DEFAULT_CURRENCY_CODE);
   }
 

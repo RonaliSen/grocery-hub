@@ -26,7 +26,10 @@ describe('currency utils', () => {
 
   it('formats amounts with the selected currency symbol', () => {
     expect(getCurrencySymbol('INR')).toBe('₹');
-    expect(formatCurrencyAmount(1234.5, 'GBP')).toContain('1,234.50');
-    expect(formatCurrencyAmount(1234.5, 'GBP')).toContain('£');
+    // Amounts follow the device's locale (e.g. "£1,234.50" in English, "1.234,50 £" in German),
+    // so check the symbol and the digits rather than one locale's separators.
+    const formatted = formatCurrencyAmount(1234.5, 'GBP');
+    expect(formatted).toContain('£');
+    expect(formatted).toMatch(/1\D?234\D50/);
   });
 });

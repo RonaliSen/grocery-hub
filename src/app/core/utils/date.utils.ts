@@ -1,7 +1,3 @@
-function toDateOnly(date: Date): string {
-  return date.toISOString().slice(0, 10);
-}
-
 function padDatePart(value: number): string {
   return value.toString().padStart(2, '0');
 }
@@ -12,8 +8,13 @@ function toDayBoundary(value: string | Date): Date {
   return date;
 }
 
+/**
+ * Today's date as local `YYYY-MM-DD` — the calendar day the user sees. (Not
+ * `toISOString().slice(0, 10)`: that's the UTC day, which is yesterday or
+ * tomorrow for part of every day in any timezone other than UTC.)
+ */
 export function todayDateOnly(): string {
-  return toDateOnly(new Date());
+  return toLocalDateOnly(new Date());
 }
 
 export function toLocalDateOnly(date: Date): string {

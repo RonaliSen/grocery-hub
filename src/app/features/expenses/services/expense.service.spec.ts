@@ -14,6 +14,12 @@ try {
   // Test environment already initialized.
 }
 
+/**
+ * Noon on 3 June in the machine's own timezone, so it's 3 June everywhere. (Noon UTC is
+ * already 4 June in timezones from UTC+12, e.g. New Zealand, which moves the budget day.)
+ */
+const JUNE_3_LOCAL_NOON = new Date(2026, 5, 3, 12).toISOString();
+
 describe('ExpenseService', () => {
   const storage = {
     get: vi.fn(),
@@ -98,13 +104,13 @@ describe('ExpenseService', () => {
     const service = TestBed.inject(ExpenseService);
     await service.load();
 
-    const activeCycle = service.getActiveBudgetCycle('2026-06-03T12:00:00.000Z');
+    const activeCycle = service.getActiveBudgetCycle(JUNE_3_LOCAL_NOON);
     expect(activeCycle).toMatchObject({
       startDate: '2026-06-01',
       endDate: '2026-06-07'
     });
 
-    const expected = service.getExpectedSpendSummary(activeCycle!.id, '2026-06-03T12:00:00.000Z');
+    const expected = service.getExpectedSpendSummary(activeCycle!.id, JUNE_3_LOCAL_NOON);
     expect(expected).toEqual({
       expectedSpend: 30,
       dailyBudget: 10,
@@ -247,10 +253,10 @@ describe('ExpenseService', () => {
     expect(service.getBudgetSettings()).toMatchObject({
       currency: 'USD'
     });
-    expect(service.getActiveBudgetCycle('2026-06-03T12:00:00.000Z')).toMatchObject({
+    expect(service.getActiveBudgetCycle(JUNE_3_LOCAL_NOON)).toMatchObject({
       currency: 'USD'
     });
-    expect(service.getDisplayCurrency('2026-06-03T12:00:00.000Z')).toBe('USD');
+    expect(service.getDisplayCurrency(JUNE_3_LOCAL_NOON)).toBe('USD');
   });
 
   it('reassigns an edited expense to the matching past cycle when the date changes', async () => {
@@ -411,6 +417,6 @@ describe('ExpenseService', () => {
     await service.load();
 
     expect(service.getBudgetCycles().map((cycle) => cycle.id)).toEqual(['cycle-monthly-2026-05-28']);
-    expect(service.getActiveBudgetCycle('2026-06-03T12:00:00.000Z')?.id).toBe('cycle-monthly-2026-05-28');
+    expect(service.getActiveBudgetCycle(JUNE_3_LOCAL_NOON)?.id).toBe('cycle-monthly-2026-05-28');
   });
 });
